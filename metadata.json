@@ -1,0 +1,6 @@
+{
+  "name": "Wellthera Partner & Customer Analytics",
+  "description": "Power BI-style partner ROI, RFM customer matrix, service breakdown, and CAC analytics dashboard integrated with Google Sheets for Wellthera Integrated Health.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

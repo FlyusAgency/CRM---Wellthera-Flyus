@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Authentic Wellthera website variables from www.wellthera.ca */
+    --cream: #f9f8f5;        /* Primary light canvas, header, pills */
+    --cream-2: #f0ede6;      /* Secondary warm canvas, sections */
+    --cream-3: #f2efe9;      /* Card caption bars, table headers */
+    --cream-4: #f0ede5;      /* Boxes, card containers */
+    --stone: #e7e3da;        /* Borders, dividers, subtle button surfaces */
+    
+    --ink: #332e1e;          /* Primary warm dark text */
+    --ink-strong: #100e0a;   /* Primary bold titles */
+    --ink-90: rgba(51, 46, 30, 0.90);
+    --ink-80: rgba(51, 46, 30, 0.80);
+    --ink-60: rgba(51, 46, 30, 0.60);
+    --ink-40: rgba(51, 46, 30, 0.40);
+    --ink-20: rgba(51, 46, 30, 0.20);
+    --hairline: rgba(51, 46, 30, 0.14);
+
+    /* Wellthera signature brand olive green */
+    --olive: #686e4a;
+    --olive-dark: #52573a;
+    --olive-light: #8a9163;
+    --olive-tint: #edf0e6;
+    --olive-border: #bcc2a4;
+
+    /* Rating Gold */
+    --gold: #e6b000;
+    --gold-tint: #fff9e6;
+    --gold-border: #f4d068;
+
+    /* Dark mode atelier colors (from wellthera preloader #14160e & footer) */
+    --dark-bg: #14160e;
+    --dark-surface: #1b1e14;
+    --dark-elevated: #23271b;
+    --dark-border: rgba(231, 227, 218, 0.14);
+
+    --font-serif: 'Instrument Serif', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+    --font-sans: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    background-color: var(--cream);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, .font-serif, .font-brand-serif {
+    font-family: var(--font-serif);
+  }
+}
+
+/* Custom Scrollbar for Power BI tables and grids in Wellthera brand */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f0ede6;
+}
+::-webkit-scrollbar-thumb {
+  background: #cdc8bb;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #686e4a;
+}
+
+/* Official Google Sign-In button styling */
+.gsi-material-button {
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  -webkit-appearance: none;
+  background-color: #ffffff;
+  background-image: none;
+  border: 1px solid #747775;
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: #1f1f1f;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  height: 36px;
+  letter-spacing: 0.25px;
+  outline: none;
+  overflow: hidden;
+  padding: 0 12px;
+  position: relative;
+  text-align: center;
+  transition: background-color .218s, border-color .218s, box-shadow .218s;
+  vertical-align: middle;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.gsi-material-button .gsi-material-button-icon {
+  height: 18px;
+  margin-right: 8px;
+  min-width: 18px;
+  width: 18px;
+}
+.gsi-material-button .gsi-material-button-content-wrapper {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  height: 100%;
+  justify-content: space-between;
+  position: relative;
+  width: 100%;
+}
+.gsi-material-button .gsi-material-button-contents {
+  flex-grow: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+.gsi-material-button:hover {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, .20);
+  background-color: #f7f9fd;
+}
