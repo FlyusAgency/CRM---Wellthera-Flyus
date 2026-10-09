@@ -11,6 +11,14 @@ import {
   Table,
   HelpCircle,
   FolderSync,
+  ClipboardCheck,
+  ChevronDown,
+  ChevronUp,
+  Lock,
+  Code2,
+  Sparkles,
+  Zap,
+  Settings,
 } from 'lucide-react';
 import {
   Customer,
@@ -22,11 +30,14 @@ import {
 import {
   createWelltheraGoogleSheet,
   syncDataToExistingSheet,
+  syncDataViaAppsScript,
   generateCsvDownload,
   DEFAULT_TARGET_DRIVE_FOLDER_ID,
   DEFAULT_TARGET_DRIVE_FOLDER_URL,
 } from '../services/googleSheets';
 import { ConfirmationModal } from './ConfirmationModal';
+import { GoogleSheetsSetupModal } from './GoogleSheetsSetupModal';
+import { ManagerDailyLogView } from './ManagerDailyLogView';
 
 interface GoogleSheetTrackerViewProps {
   customers: Customer[];
@@ -38,12 +49,14 @@ interface GoogleSheetTrackerViewProps {
   accessToken: string | null;
   onAddNewCustomer: (customer: Customer) => void;
   onAddNewPartner: (partner: Partner) => void;
+  onAddNewBooking?: (booking: ServiceBooking) => void;
   onOpenSignIn: () => void;
+  onRefreshFromSheet?: () => Promise<void>;
   isDarkMode?: boolean;
   onOpenHelp?: () => void;
 }
 
-type SheetTab = 'customers' | 'partners' | 'bookings' | 'cac';
+type SheetTab = 'manager' | 'customers' | 'partners' | 'bookings' | 'cac';
 
 export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   customers,
@@ -55,14 +68,18 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   accessToken,
   onAddNewCustomer,
   onAddNewPartner,
+  onAddNewBooking,
   onOpenSignIn,
+  onRefreshFromSheet,
   isDarkMode = false,
   onOpenHelp,
 }) => {
-  const [activeTab, setActiveTab] = useState<SheetTab>('customers');
+  const [activeTab, setActiveTab] = useState<SheetTab>('manager');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
   const [isAddPartnerModalOpen, setIsAddPartnerModalOpen] = useState(false);
+  const [showStaffQuickGuide, setShowStaffQuickGuide] = useState(false);
+  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
 
   // Destructive / mutating operations confirmation state
   const [confirmationConfig, setConfirmationConfig] = useState<{
@@ -97,7 +114,8 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
 
   const handleCreateSheetPrompt = () => {
     if (!accessToken) {
-      onOpenSignIn();
+      // If not logged in with OAuth, open Setup Modal which offers the 1-click Google Apps Script generator
+      setIsSetupModalOpen(true);
       return;
     }
 
@@ -150,45 +168,88 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   };
 
   const handleSyncUpdatesPrompt = () => {
-    if (!accessToken || !syncState.sheetId) {
+    // 1. If Apps Script Webhook is configured, sync directly via Apps Script
+    if (syncState.appsScriptUrl) {
+      setConfirmationConfig({
+        isOpen: true,
+        title: 'Synchronize with Google Sheet via Apps Script?',
+        description:
+          'This action will send Dashboard data directly to your Google Sheet via the configured Webhook.',
+        details: [
+          `Webhook URL: ${syncState.appsScriptUrl}`,
+          `Syncing ${customers.length} Customers, ${partners.length} Partners, and ${bookings.length} Bookings`,
+        ],
+        action: async () => {
+          try {
+            setSyncState((prev) => ({ ...prev, isSyncing: true, syncMessage: 'Syncing via Apps Script Webhook...' }));
+            const res = await syncDataViaAppsScript(syncState.appsScriptUrl!, {
+              customers,
+              partners,
+              bookings,
+              cacChannels,
+            });
+
+            setSyncState((prev) => ({
+              ...prev,
+              lastSyncedAt: new Date().toLocaleTimeString(),
+              isSyncing: false,
+              syncMessage: res.message || 'Successfully synchronized via Apps Script!',
+            }));
+          } catch (err: any) {
+            console.error(err);
+            setSyncState((prev) => ({
+              ...prev,
+              isSyncing: false,
+              syncMessage: `Sync error: ${err.message}`,
+            }));
+          }
+        },
+      });
       return;
     }
 
-    setConfirmationConfig({
-      isOpen: true,
-      title: 'Push All Updates to Google Sheet?',
-      description:
-        'This will update existing cells in your Google Sheet on Google Drive with the latest data from this application.',
-      details: [
-        `Target Sheet: ${syncState.sheetUrl}`,
-        `Updating ${customers.length} Customers, ${partners.length} Partners, and ${bookings.length} Bookings`,
-      ],
-      action: async () => {
-        try {
-          setSyncState((prev) => ({ ...prev, isSyncing: true, syncMessage: 'Syncing rows to Google Sheets...' }));
-          await syncDataToExistingSheet(accessToken, syncState.sheetId!, {
-            customers,
-            partners,
-            bookings,
-            cacChannels,
-          });
+    // 2. If Google OAuth token and sheetId are available, sync via Google Sheets REST API
+    if (accessToken && syncState.sheetId) {
+      setConfirmationConfig({
+        isOpen: true,
+        title: 'Push All Updates to Google Sheet?',
+        description:
+          'This will update existing cells in your Google Sheet on Google Drive with the latest data from this application.',
+        details: [
+          `Target Sheet: ${syncState.sheetUrl}`,
+          `Updating ${customers.length} Customers, ${partners.length} Partners, and ${bookings.length} Bookings`,
+        ],
+        action: async () => {
+          try {
+            setSyncState((prev) => ({ ...prev, isSyncing: true, syncMessage: 'Syncing rows to Google Sheets...' }));
+            await syncDataToExistingSheet(accessToken, syncState.sheetId!, {
+              customers,
+              partners,
+              bookings,
+              cacChannels,
+            });
 
-          setSyncState((prev) => ({
-            ...prev,
-            lastSyncedAt: new Date().toLocaleTimeString(),
-            isSyncing: false,
-            syncMessage: 'Synchronized successfully with Google Sheets!',
-          }));
-        } catch (err: any) {
-          console.error(err);
-          setSyncState((prev) => ({
-            ...prev,
-            isSyncing: false,
-            syncMessage: `Sync Error: ${err.message}`,
-          }));
-        }
-      },
-    });
+            setSyncState((prev) => ({
+              ...prev,
+              lastSyncedAt: new Date().toLocaleTimeString(),
+              isSyncing: false,
+              syncMessage: 'Synchronized successfully with Google Sheets!',
+            }));
+          } catch (err: any) {
+            console.error(err);
+            setSyncState((prev) => ({
+              ...prev,
+              isSyncing: false,
+              syncMessage: `Sync Error: ${err.message}`,
+            }));
+          }
+        },
+      });
+      return;
+    }
+
+    // 3. If neither is connected, open the Setup & Apps Script Modal so the user can easily connect or copy the script
+    setIsSetupModalOpen(true);
   };
 
   const handleCsvExport = () => {
@@ -318,41 +379,61 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
 
         {/* Action Buttons: Create Sheet, Push Updates, Download CSV */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          {syncState.sheetUrl ? (
-            <>
-              <a
-                href={syncState.sheetUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3.5 py-2 bg-[#686e4a] hover:bg-[#52573a] text-white font-semibold rounded-full flex items-center gap-1.5 transition-colors shadow-sm"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open in Google Sheets</span>
-              </a>
+          <button
+            onClick={() => setIsSetupModalOpen(true)}
+            className={`px-3.5 py-2 rounded-full font-semibold flex items-center gap-1.5 transition-colors border shadow-xs cursor-pointer ${
+              isDarkMode
+                ? 'bg-[#1c2015] border-[#343a27] text-[#e6b000] hover:bg-[#252a1c]'
+                : 'bg-[#edf0e6] border-[#bcc2a4] text-[#52573a] hover:bg-[#dfe4d3]'
+            }`}
+            title="Spreadsheet Setup & Apps Script Generator"
+          >
+            <Code2 className="w-3.5 h-3.5" />
+            <span>Generate Sheet (Apps Script)</span>
+          </button>
 
-              <button
-                onClick={handleSyncUpdatesPrompt}
-                disabled={syncState.isSyncing}
-                className={`px-3.5 py-2 rounded-full font-semibold flex items-center gap-1.5 transition-colors border ${
-                  isDarkMode
-                    ? 'bg-[#1c2015] border-[#292e1e] text-[#c7ccaa] hover:bg-[#252a1c]'
-                    : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38] hover:bg-[#e7e3da]'
-                }`}
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${syncState.isSyncing ? 'animate-spin' : ''}`} />
-                <span>{syncState.isSyncing ? 'Syncing...' : 'Sync to Sheet'}</span>
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={handleCreateSheetPrompt}
-              disabled={syncState.isSyncing}
-              className="px-4 py-2 bg-[#686e4a] hover:bg-[#52573a] text-white font-bold rounded-full flex items-center gap-2 transition-all shadow-sm"
+          {syncState.sheetUrl && (
+            <a
+              href={syncState.sheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-2 bg-[#686e4a] hover:bg-[#52573a] text-white font-semibold rounded-full flex items-center gap-1.5 transition-colors shadow-sm"
             >
-              <CloudUpload className="w-4 h-4" />
-              <span>Create Google Sheet in Drive</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open in Google Sheets</span>
+            </a>
+          )}
+
+          {onRefreshFromSheet && (
+            <button
+              onClick={onRefreshFromSheet}
+              disabled={syncState.isSyncing}
+              className={`px-3.5 py-2 rounded-full font-semibold flex items-center gap-1.5 transition-colors border cursor-pointer ${
+                isDarkMode
+                  ? 'bg-[#1c2015] border-[#343a27] text-[#e6b000] hover:bg-[#252a1c]'
+                  : 'bg-[#edf0e6] border-[#bcc2a4] text-[#52573a] hover:bg-[#dfe4d3]'
+              }`}
+              title="Pull latest patients, partners, and bookings from Google Sheets"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncState.isSyncing ? 'animate-spin' : ''}`} />
+              <span>{syncState.isSyncing ? 'Fetching...' : 'Pull from Google Sheet'}</span>
             </button>
           )}
+
+          <button
+            onClick={handleSyncUpdatesPrompt}
+            disabled={syncState.isSyncing}
+            className={`px-3.5 py-2 rounded-full font-semibold flex items-center gap-1.5 transition-colors border cursor-pointer ${
+              syncState.sheetUrl || syncState.appsScriptUrl
+                ? 'bg-[#686e4a] hover:bg-[#52573a] text-white border-transparent shadow-sm'
+                : isDarkMode
+                ? 'bg-[#1c2015] border-[#292e1e] text-[#c7ccaa] hover:bg-[#252a1c]'
+                : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38] hover:bg-[#e7e3da]'
+            }`}
+          >
+            <CloudUpload className="w-3.5 h-3.5" />
+            <span>Sync to Sheet</span>
+          </button>
 
           <button
             onClick={handleCsvExport}
@@ -394,21 +475,108 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
           </a>
         </div>
 
-        {onOpenHelp && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={onOpenHelp}
+            onClick={() => setShowStaffQuickGuide(!showStaffQuickGuide)}
             className={`px-3 py-1 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-              isDarkMode
+              showStaffQuickGuide
+                ? 'bg-[#686e4a] text-white border-[#686e4a]'
+                : isDarkMode
                 ? 'bg-[#1c2015] border-[#292e1e] text-[#c7ccaa] hover:bg-[#252a1c]'
                 : 'bg-[#ffffff] border-[#e7e3da] text-[#52573a] hover:bg-[#f0ede6]'
             }`}
-            title="Setup & GitHub Deployment Guide"
+            title="Staff instructions for updating the spreadsheet"
           >
-            <HelpCircle className="w-3.5 h-3.5 text-[#686e4a]" />
-            <span>Setup & GitHub Guide (?)</span>
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            <span>Front Desk SOP Guide</span>
+            <ChevronDown className={`w-3 h-3 transition-transform ${showStaffQuickGuide ? 'rotate-180' : ''}`} />
           </button>
-        )}
+
+          {onOpenHelp && (
+            <button
+              onClick={onOpenHelp}
+              className={`px-3 py-1 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                isDarkMode
+                  ? 'bg-[#1c2015] border-[#292e1e] text-[#c7ccaa] hover:bg-[#252a1c]'
+                  : 'bg-[#ffffff] border-[#e7e3da] text-[#52573a] hover:bg-[#f0ede6]'
+              }`}
+              title="General Setup & Deployment Guide"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-[#686e4a]" />
+              <span>Full Manual (?)</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Staff SOP Quick Guide Collapsible Card */}
+      {showStaffQuickGuide && (
+        <div
+          className={`p-4 rounded-xl border space-y-3 animate-in fade-in duration-150 ${
+            isDarkMode
+              ? 'bg-[#181b12] border-[#292e1e] text-[#f9f8f5]'
+              : 'bg-[#f9f8f5] border-[#bcc2a4] text-[#332e1e]'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="w-4 h-4 text-[#686e4a] dark:text-[#c7ccaa]" />
+              <strong className="text-xs sm:text-sm font-serif">
+                Daily Clinic Routine & Staff Spreadsheet Instructions:
+              </strong>
+            </div>
+            {onOpenHelp && (
+              <button
+                onClick={onOpenHelp}
+                className="text-[11px] text-[#686e4a] dark:text-[#c7ccaa] font-bold hover:underline"
+              >
+                Open Full Manual →
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+            <div className="p-3 rounded-lg border border-inherit space-y-1.5 bg-black/5 dark:bg-white/5">
+              <strong className="text-[#686e4a] dark:text-[#c7ccaa] block font-semibold">
+                1. At Every Completed Checkout:
+              </strong>
+              <p className="opacity-80 leading-relaxed">
+                Open <strong>Services & Bookings Log</strong> in Google Sheets and add a row: Patient Name, Date, Service Category, Therapist, and Total Price CAD.
+              </p>
+              <p className="text-[10px] opacity-70">
+                • If insurance was billed: enter covered amount in <em>Direct Insurance Billed</em> and copay in <em>Patient Out-of-Pocket</em>.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg border border-inherit space-y-1.5 bg-black/5 dark:bg-white/5">
+              <strong className="text-[#e6b000] block font-semibold">
+                2. When Patient is NEW to Clinic:
+              </strong>
+              <p className="opacity-80 leading-relaxed">
+                Open <strong>Customers & RFM</strong> and add the profile: Name, Phone, Email, Insurance Provider, and Referral Partner Code.
+              </p>
+              <p className="text-[10px] opacity-70 font-mono">
+                Barrie Referral Codes: <code className="font-bold">CFIT-APEX</code> | <code className="font-bold">LAKE-PHYS</code> | <code className="font-bold">INNIS-PELV</code> | <code className="font-bold">BARRIE-CHIR</code> | <code className="font-bold">DIRECT</code>
+              </p>
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded-lg border border-amber-300 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/20 text-[11px] flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200">
+            <div className="flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                <strong>Important:</strong> Never delete existing rows and do not edit calculated formula columns (R-Score, F-Score, Segment).
+              </span>
+            </div>
+            <button
+              onClick={() => setShowStaffQuickGuide(false)}
+              className="text-[10px] font-bold uppercase underline shrink-0 hover:opacity-80"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Sync Status Banner */}
       {syncState.syncMessage && (
@@ -459,6 +627,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
           <div className="flex items-center gap-1 overflow-x-auto">
             {(
               [
+                { id: 'manager', label: "👩‍💼 Manager's Desk (Daily)", count: bookings.length },
                 { id: 'customers', label: '1. Customers & RFM', count: customers.length },
                 { id: 'partners', label: '2. Partners & ROI', count: partners.length },
                 { id: 'bookings', label: '3. Services & Bookings', count: bookings.length },
@@ -513,6 +682,22 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
             )}
           </div>
         </div>
+
+        {/* Tab 0: Manager Daily Operational Console */}
+        {activeTab === 'manager' && (
+          <div className="p-4 sm:p-5">
+            <ManagerDailyLogView
+              bookings={bookings}
+              customers={customers}
+              partners={partners}
+              onAddNewBooking={onAddNewBooking || (() => {})}
+              onAddNewCustomer={onAddNewCustomer}
+              syncState={syncState}
+              onSyncNow={handleSyncUpdatesPrompt}
+              isDarkMode={isDarkMode}
+            />
+          </div>
+        )}
 
         {/* Tab 1: Customers Table View */}
         {activeTab === 'customers' && (
@@ -999,6 +1184,30 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
           await confirmationConfig.action();
         }}
         onCancel={() => setConfirmationConfig((prev) => ({ ...prev, isOpen: false }))}
+      />
+
+      {/* Google Sheets Apps Script & Setup Modal */}
+      <GoogleSheetsSetupModal
+        isOpen={isSetupModalOpen}
+        onClose={() => setIsSetupModalOpen(false)}
+        isDarkMode={isDarkMode}
+        syncState={syncState}
+        onSaveSyncSettings={(settings) => {
+          setSyncState((prev) => ({
+            ...prev,
+            sheetId: settings.sheetId ?? prev.sheetId,
+            sheetUrl: settings.sheetUrl ?? prev.sheetUrl,
+            appsScriptUrl: settings.appsScriptUrl ?? prev.appsScriptUrl,
+            syncMessage: 'Synchronization settings successfully updated!',
+          }));
+        }}
+        customers={customers}
+        partners={partners}
+        bookings={bookings}
+        cacChannels={cacChannels}
+        accessToken={accessToken}
+        onSignInGoogle={onOpenSignIn}
+        onCreateViaOAuth={handleCreateSheetPrompt}
       />
     </div>
   );

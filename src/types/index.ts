@@ -115,6 +115,8 @@ export interface SlicerFilters {
 export interface GoogleSheetSyncState {
   sheetId: string | null;
   sheetUrl: string | null;
+  appsScriptUrl?: string | null;
+  syncMode?: 'oauth' | 'appscript' | 'manual';
   lastSyncedAt: string | null;
   isSyncing: boolean;
   syncMessage: string | null;

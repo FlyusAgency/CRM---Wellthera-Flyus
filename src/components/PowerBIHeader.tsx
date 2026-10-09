@@ -11,6 +11,7 @@ import {
   Sun,
   Moon,
   HelpCircle,
+  Lock,
 } from 'lucide-react';
 import { GoogleSignInButton } from './GoogleSignInButton';
 import { WelltheraLogo } from './WelltheraLogo';
@@ -30,6 +31,7 @@ interface PowerBIHeaderProps {
   isDarkMode?: boolean;
   onToggleTheme?: () => void;
   onOpenHelp?: () => void;
+  onLockPortal?: () => void;
 }
 
 export const PowerBIHeader: React.FC<PowerBIHeaderProps> = ({
@@ -45,6 +47,7 @@ export const PowerBIHeader: React.FC<PowerBIHeaderProps> = ({
   isDarkMode = false,
   onToggleTheme,
   onOpenHelp,
+  onLockPortal,
 }) => {
   return (
     <header
@@ -195,6 +198,22 @@ export const PowerBIHeader: React.FC<PowerBIHeaderProps> = ({
             onSignOut={onSignOut}
             isLoading={isLoadingAuth}
           />
+
+          {/* Gatekeeper Lock / Sign Out Button */}
+          {onLockPortal && (
+            <button
+              onClick={onLockPortal}
+              className={`p-2 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                isDarkMode
+                  ? 'bg-[#1c2015] border-[#343a27] text-[#c7ccaa] hover:bg-[#252a1c] hover:border-amber-700/50 hover:text-amber-300'
+                  : 'bg-[#edf0e6] border-[#bcc2a4] text-[#52573a] hover:bg-[#dfe4d3] hover:border-amber-600 hover:text-amber-800'
+              }`}
+              title="Lock Portal (Sign Out from Gatekeeper)"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline text-[11px]">Lock</span>
+            </button>
+          )}
         </div>
       </div>
 

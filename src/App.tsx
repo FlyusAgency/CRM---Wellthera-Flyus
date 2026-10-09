@@ -31,8 +31,26 @@ import { CacAnalysisDashboard } from './components/CacAnalysisDashboard';
 import { GoogleSheetTrackerView } from './components/GoogleSheetTrackerView';
 import { WelltheraLogo } from './components/WelltheraLogo';
 import { SetupInstructionsModal } from './components/SetupInstructionsModal';
+import {
+  fetchSheetDataViaAppsScript,
+  pullLatestDataFromSpreadsheet,
+  parseSpreadsheetIdFromInput,
+} from './services/googleSheets';
+import { GatekeeperLogin } from './components/GatekeeperLogin';
 
 export default function App() {
+  // Gatekeeper protection state for Vercel public deployment
+  const [isGatekeeperUnlocked, setIsGatekeeperUnlocked] = useState<boolean>(() => {
+    try {
+      return (
+        localStorage.getItem('wellthera_auth_gate') === 'authenticated' ||
+        sessionStorage.getItem('wellthera_auth_gate') === 'authenticated'
+      );
+    } catch {
+      return false;
+    }
+  });
+
   // Theme state: default to false (Wellthera Signature Warm Cream from www.wellthera.ca)
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -53,14 +71,180 @@ export default function App() {
   const [bookings, setBookings] = useState<ServiceBooking[]>(initialBookings);
   const [cacChannels, setCacChannels] = useState<CacChannelSpend[]>(initialCacChannels);
 
-  // Google Sheet Sync State
-  const [syncState, setSyncState] = useState<GoogleSheetSyncState>({
-    sheetId: null,
-    sheetUrl: null,
-    lastSyncedAt: null,
-    isSyncing: false,
-    syncMessage: null,
+  // Google Sheet Sync State with LocalStorage Persistence
+  const [syncState, setSyncState] = useState<GoogleSheetSyncState>(() => {
+    const envWebhookUrl =
+      (import.meta as any).env?.VITE_APPS_SCRIPT_WEBHOOK_URL?.trim() ||
+      (import.meta as any).env?.VITE_WELLTHERA_WEBHOOK_URL?.trim() ||
+      null;
+    const envSheetUrl =
+      (import.meta as any).env?.VITE_GOOGLE_SHEET_URL?.trim() ||
+      (import.meta as any).env?.VITE_SHEET_URL?.trim() ||
+      null;
+    const envSheetId =
+      (import.meta as any).env?.VITE_SHEET_ID?.trim() ||
+      (envSheetUrl ? parseSpreadsheetIdFromInput(envSheetUrl) : null);
+
+    try {
+      const saved = localStorage.getItem('wellthera_sheet_sync_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (envWebhookUrl && !parsed.appsScriptUrl) {
+          parsed.appsScriptUrl = envWebhookUrl;
+        }
+        if (envSheetUrl && !parsed.sheetUrl) {
+          parsed.sheetUrl = envSheetUrl;
+        }
+        if (envSheetId && !parsed.sheetId) {
+          parsed.sheetId = envSheetId;
+        }
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load saved sync state', e);
+    }
+    return {
+      sheetId: envSheetId,
+      sheetUrl: envSheetUrl,
+      appsScriptUrl: envWebhookUrl,
+      syncMode: envWebhookUrl ? 'appscript' : 'oauth',
+      lastSyncedAt: null,
+      isSyncing: false,
+      syncMessage: envWebhookUrl
+        ? 'Webhook configured via environment variable (Vercel).'
+        : envSheetUrl
+        ? 'Google Sheet URL configured via environment variable.'
+        : null,
+    };
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wellthera_sheet_sync_state', JSON.stringify(syncState));
+    } catch (e) {
+      console.warn('Failed to persist sync state', e);
+    }
+  }, [syncState]);
+
+  // Pull fresh data from Google Sheets (patients, partners, bookings, CAC)
+  const handleRefreshFromSheet = async () => {
+    setSyncState((prev) => ({
+      ...prev,
+      isSyncing: true,
+      syncMessage: 'Pulling latest records from Google Sheet...',
+    }));
+
+    try {
+      const result = await pullLatestDataFromSpreadsheet(syncState, accessToken);
+      if (result.success) {
+        if (result.customers && result.customers.length > 0) {
+          // Recompute RFM for newly added customers
+          const enriched = result.customers.map((c) => {
+            const { rScore, fScore, mScore, segment } = computeRfmSegment(
+              c.recencyDays || 15,
+              c.totalVisits || 1,
+              c.totalSpendCAD || 0
+            );
+            return {
+              ...c,
+              recencyScore: c.recencyScore || rScore,
+              frequencyScore: c.frequencyScore || fScore,
+              monetaryScore: c.monetaryScore || mScore,
+              rfmSegment: c.rfmSegment || segment,
+            };
+          });
+          setCustomers(enriched);
+        }
+
+        if (result.partners && result.partners.length > 0) {
+          setPartners(result.partners);
+        }
+
+        if (result.bookings && result.bookings.length > 0) {
+          setBookings(result.bookings);
+        }
+
+        if (result.cacChannels && result.cacChannels.length > 0) {
+          setCacChannels(result.cacChannels);
+        }
+
+        setSyncState((prev) => ({
+          ...prev,
+          isSyncing: false,
+          lastSyncedAt: new Date().toLocaleTimeString(),
+          syncMessage: result.message,
+        }));
+      } else {
+        setSyncState((prev) => ({
+          ...prev,
+          isSyncing: false,
+          syncMessage: result.message,
+        }));
+      }
+    } catch (err: any) {
+      console.warn('Pull error:', err);
+      setSyncState((prev) => ({
+        ...prev,
+        isSyncing: false,
+        syncMessage: `Sync note: ${err.message || 'Check network connection'}`,
+      }));
+    }
+  };
+
+  // Automated synchronization (Vercel Environment Variable or Apps Script URL or Sheet ID)
+  // Automatically pulls new customers, partners and visits logged in the spreadsheet
+  useEffect(() => {
+    if (!syncState.appsScriptUrl && !syncState.sheetId && !syncState.sheetUrl) return;
+
+    let isMounted = true;
+    const fetchLatest = async () => {
+      try {
+        const result = await pullLatestDataFromSpreadsheet(syncState, accessToken);
+        if (result.success && isMounted) {
+          if (result.customers && result.customers.length > 0) {
+            setCustomers(result.customers);
+          }
+          if (result.partners && result.partners.length > 0) {
+            setPartners(result.partners);
+          }
+          if (result.bookings && result.bookings.length > 0) {
+            setBookings(result.bookings);
+          }
+          if (result.cacChannels && result.cacChannels.length > 0) {
+            setCacChannels(result.cacChannels);
+          }
+          setSyncState((prev) => ({
+            ...prev,
+            lastSyncedAt: new Date().toLocaleTimeString(),
+            syncMessage: result.message,
+          }));
+        }
+      } catch (err) {
+        console.warn('Auto-sync check notice:', err);
+      }
+    };
+
+    // Run on mount
+    fetchLatest();
+
+    // Periodic background sync every 30 seconds
+    const interval = setInterval(fetchLatest, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [syncState.appsScriptUrl, syncState.sheetId, syncState.sheetUrl]);
+
+  // Lock portal handler (resets gatekeeper session)
+  const handleLockPortal = () => {
+    try {
+      localStorage.removeItem('wellthera_auth_gate');
+      sessionStorage.removeItem('wellthera_auth_gate');
+    } catch (e) {
+      console.warn('Failed to clear gatekeeper session', e);
+    }
+    setIsGatekeeperUnlocked(false);
+  };
 
   // Power BI Slicers State
   const [filters, setFilters] = useState<SlicerFilters>({
@@ -112,9 +296,7 @@ export default function App() {
     setAccessToken(null);
     setSyncState((prev) => ({
       ...prev,
-      sheetId: null,
-      sheetUrl: null,
-      syncMessage: null,
+      syncMessage: 'Signed out from Google account. Linked Sheet reference preserved.',
     }));
   };
 
@@ -175,6 +357,33 @@ export default function App() {
   // Add partner handler
   const handleAddNewPartner = (newPartner: Partner) => {
     setPartners((prev) => [newPartner, ...prev]);
+  };
+
+  // Add booking handler for clinic manager daily logging
+  const handleAddNewBooking = (newBooking: ServiceBooking) => {
+    setBookings((prev) => [newBooking, ...prev]);
+    // Automatically update customer's last visit, total visits and spend
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (c.name.toLowerCase() === newBooking.customerName.toLowerCase() || c.id === newBooking.customerId) {
+          const totalVisits = c.totalVisits + 1;
+          const totalSpendCAD = c.totalSpendCAD + newBooking.priceCAD;
+          const { rScore, fScore, mScore, segment } = computeRfmSegment(0, totalVisits, totalSpendCAD);
+          return {
+            ...c,
+            lastVisitDate: newBooking.bookingDate,
+            totalVisits,
+            totalSpendCAD,
+            recencyDays: 0,
+            recencyScore: rScore,
+            frequencyScore: fScore,
+            monetaryScore: mScore,
+            rfmSegment: segment,
+          };
+        }
+        return c;
+      })
+    );
   };
 
   // Cross-filtering computation across all visual models
@@ -253,6 +462,16 @@ export default function App() {
 
   const totalRevenue = bookings.reduce((acc, b) => acc + b.priceCAD, 0);
 
+  // Gatekeeper protection screen (protects public dashboard on Vercel)
+  if (!isGatekeeperUnlocked) {
+    return (
+      <GatekeeperLogin
+        onAuthenticated={() => setIsGatekeeperUnlocked(true)}
+        isDarkMode={isDarkMode}
+      />
+    );
+  }
+
   return (
     <div
       className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${
@@ -275,6 +494,7 @@ export default function App() {
         isDarkMode={isDarkMode}
         onToggleTheme={() => setIsDarkMode(!isDarkMode)}
         onOpenHelp={() => setIsHelpOpen(true)}
+        onLockPortal={handleLockPortal}
       />
 
       {/* Slicer Bar (Interactive Power BI Filtering) */}
@@ -344,7 +564,9 @@ export default function App() {
             accessToken={accessToken}
             onAddNewCustomer={handleAddNewCustomer}
             onAddNewPartner={handleAddNewPartner}
+            onAddNewBooking={handleAddNewBooking}
             onOpenSignIn={handleSignIn}
+            onRefreshFromSheet={handleRefreshFromSheet}
             isDarkMode={isDarkMode}
             onOpenHelp={() => setIsHelpOpen(true)}
           />
