@@ -12,18 +12,27 @@ import {
   CacChannelSpend,
   SlicerFilters,
   GoogleSheetSyncState,
+  Practitioner,
+  ClinicProcedure,
+  QuarterlyOkrPlan,
+  ClinicObjective,
+  KeyResult,
 } from './types';
 import {
   initialCustomers,
   initialPartners,
   initialBookings,
   initialCacChannels,
+  initialPractitioners,
+  initialProcedures,
+  initialOkrPlans,
   computeRfmSegment,
 } from './data/initialData';
 import { initAuth, googleSignIn, logout } from './services/firebaseAuth';
 import { PowerBIHeader, ActiveTab } from './components/PowerBIHeader';
 import { SlicerBar } from './components/SlicerBar';
 import { ExecutiveOverview } from './components/ExecutiveOverview';
+import { OkrDashboard } from './components/OkrDashboard';
 import { PartnerRoiDashboard } from './components/PartnerRoiDashboard';
 import { RfmMatrixDashboard } from './components/RfmMatrixDashboard';
 import { ServicesBreakdownDashboard } from './components/ServicesBreakdownDashboard';
@@ -65,11 +74,138 @@ export default function App() {
   // Active Tab
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
 
-  // Primary Data State
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
-  const [partners, setPartners] = useState<Partner[]>(initialPartners);
-  const [bookings, setBookings] = useState<ServiceBooking[]>(initialBookings);
+  // Primary Data State with LocalStorage Persistence & Cache Invalidation
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const saved = localStorage.getItem('wellthera_customers_v5');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= 500) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load customers from storage', e);
+    }
+    return initialCustomers;
+  });
+
+  const [partners, setPartners] = useState<Partner[]>(() => {
+    try {
+      const saved = localStorage.getItem('wellthera_partners_v5');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load partners from storage', e);
+    }
+    return initialPartners;
+  });
+
+  const [bookings, setBookings] = useState<ServiceBooking[]>(() => {
+    try {
+      const saved = localStorage.getItem('wellthera_bookings_v5');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load bookings from storage', e);
+    }
+    return initialBookings;
+  });
+
   const [cacChannels, setCacChannels] = useState<CacChannelSpend[]>(initialCacChannels);
+
+  const [practitioners, setPractitioners] = useState<Practitioner[]>(() => {
+    try {
+      const saved = localStorage.getItem('wellthera_practitioners_v5');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load practitioners from storage', e);
+    }
+    return initialPractitioners;
+  });
+
+  const [procedures, setProcedures] = useState<ClinicProcedure[]>(() => {
+    try {
+      const saved = localStorage.getItem('wellthera_procedures_v5');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load procedures from storage', e);
+    }
+    return initialProcedures;
+  });
+
+  // Persist datasets to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('wellthera_customers_v5', JSON.stringify(customers));
+    } catch (e) {
+      console.warn('Failed to persist customers', e);
+    }
+  }, [customers]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wellthera_partners_v5', JSON.stringify(partners));
+    } catch (e) {
+      console.warn('Failed to persist partners', e);
+    }
+  }, [partners]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wellthera_bookings_v5', JSON.stringify(bookings));
+    } catch (e) {
+      console.warn('Failed to persist bookings', e);
+    }
+  }, [bookings]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wellthera_practitioners_v5', JSON.stringify(practitioners));
+    } catch (e) {
+      console.warn('Failed to persist practitioners', e);
+    }
+  }, [practitioners]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wellthera_procedures_v5', JSON.stringify(procedures));
+    } catch (e) {
+      console.warn('Failed to persist procedures', e);
+    }
+  }, [procedures]);
+
+  // OKR & Quarterly Target Plans State
+  const [okrPlans, setOkrPlans] = useState<QuarterlyOkrPlan[]>(() => {
+    try {
+      const saved = localStorage.getItem('wellthera_okrs_v5');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to load OKRs from storage', e);
+    }
+    return initialOkrPlans;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wellthera_okrs_v5', JSON.stringify(okrPlans));
+    } catch (e) {
+      console.warn('Failed to persist OKRs', e);
+    }
+  }, [okrPlans]);
 
   // Google Sheet Sync State with LocalStorage Persistence
   const [syncState, setSyncState] = useState<GoogleSheetSyncState>(() => {
@@ -168,6 +304,14 @@ export default function App() {
           setCacChannels(result.cacChannels);
         }
 
+        if (result.practitioners && result.practitioners.length > 0) {
+          setPractitioners(result.practitioners);
+        }
+
+        if (result.procedures && result.procedures.length > 0) {
+          setProcedures(result.procedures);
+        }
+
         setSyncState((prev) => ({
           ...prev,
           isSyncing: false,
@@ -212,6 +356,12 @@ export default function App() {
           }
           if (result.cacChannels && result.cacChannels.length > 0) {
             setCacChannels(result.cacChannels);
+          }
+          if (result.practitioners && result.practitioners.length > 0) {
+            setPractitioners(result.practitioners);
+          }
+          if (result.procedures && result.procedures.length > 0) {
+            setProcedures(result.procedures);
           }
           setSyncState((prev) => ({
             ...prev,
@@ -311,6 +461,77 @@ export default function App() {
     });
   };
 
+  // Helper to recompute partner metrics dynamically across customers and bookings
+  const recomputePartnerMetrics = (
+    currentPartners: Partner[],
+    currentCustomers: Customer[],
+    currentBookings: ServiceBooking[]
+  ): Partner[] => {
+    return currentPartners.map((partner) => {
+      // Find all customers referred by this partner
+      const referredCusts = currentCustomers.filter((c) => {
+        if (partner.id === 'p-8') {
+          return c.partnerId === 'p-8' || c.partnerId === 'direct' || !c.partnerId;
+        }
+        return c.partnerId === partner.id;
+      });
+
+      const referredCustomersCount = referredCusts.length;
+      const activeCustomersCount = referredCusts.filter(
+        (c) => c.status === 'Active' || c.status === 'VIP'
+      ).length;
+
+      // Find all bookings linked to this partner
+      const partnerBookings = currentBookings.filter((b) => {
+        if (partner.id === 'p-8') {
+          return b.partnerId === 'p-8' || b.partnerId === 'direct' || !b.partnerId;
+        }
+        return b.partnerId === partner.id;
+      });
+
+      const totalBookingsCount =
+        partnerBookings.length > 0
+          ? partnerBookings.length
+          : referredCusts.reduce((sum, c) => sum + (c.totalVisits || 1), 0);
+
+      const totalRevenueCAD =
+        partnerBookings.length > 0
+          ? partnerBookings.reduce((sum, b) => sum + (b.priceCAD || 0), 0)
+          : referredCusts.reduce((sum, c) => sum + (c.totalSpendCAD || 0), 0);
+
+      let commissionPaid = 0;
+      if (partner.commissionType === 'Percentage') {
+        commissionPaid = (totalRevenueCAD * (partner.commissionValue || 0)) / 100;
+      } else if (partner.commissionType === 'FlatPerBooking') {
+        commissionPaid = totalBookingsCount * (partner.commissionValue || 0);
+      }
+
+      const retainerCost = (partner.monthlyRetainerCAD || 0) * 6;
+      const totalCost = commissionPaid + retainerCost;
+      const netRevenueCAD = totalRevenueCAD - totalCost;
+      const roiPercent =
+        totalCost > 0
+          ? (netRevenueCAD / totalCost) * 100
+          : totalRevenueCAD > 0
+          ? 100
+          : 0;
+      const averageCustomerSpendCAD =
+        referredCustomersCount > 0 ? totalRevenueCAD / referredCustomersCount : 0;
+
+      return {
+        ...partner,
+        referredCustomersCount,
+        activeCustomersCount,
+        totalBookingsCount,
+        totalRevenueCAD: Math.round(totalRevenueCAD * 100) / 100,
+        totalCommissionPaidCAD: Math.round(commissionPaid * 100) / 100,
+        netRevenueCAD: Math.round(netRevenueCAD * 100) / 100,
+        roiPercent: Math.round(roiPercent * 10) / 10,
+        averageCustomerSpendCAD: Math.round(averageCustomerSpendCAD * 100) / 100,
+      };
+    });
+  };
+
   // Add customer handler
   const handleAddNewCustomer = (newCustomer: Customer) => {
     // Recompute RFM
@@ -327,75 +548,371 @@ export default function App() {
       rfmSegment: segment,
     };
 
-    setCustomers((prev) => [enriched, ...prev]);
+    const nextCustomers = [enriched, ...customers];
+    setCustomers(nextCustomers);
+    setPartners((prev) => recomputePartnerMetrics(prev, nextCustomers, bookings));
+  };
 
-    // Update partner referral counts
-    setPartners((prev) =>
-      prev.map((p) => {
-        if (p.id === enriched.partnerId) {
-          const rev = p.totalRevenueCAD + enriched.totalSpendCAD;
-          const comm = (rev * p.commissionValue) / 100;
-          const net = rev - (comm + p.monthlyRetainerCAD * 6);
-          const roi =
-            comm + p.monthlyRetainerCAD * 6 > 0
-              ? (net / (comm + p.monthlyRetainerCAD * 6)) * 100
-              : 0;
+  // Partner assignment to customer (even after creation/import)
+  const handleAssignPartnerToCustomer = (
+    customerId: string,
+    partnerId: string,
+    partnerName: string,
+    referralCode?: string,
+    updatePastBookings: boolean = true
+  ) => {
+    let targetCustomer: Customer | undefined;
+
+    const nextCustomers = customers.map((c) => {
+      if (c.id === customerId) {
+        targetCustomer = {
+          ...c,
+          partnerId,
+          partnerName,
+          referralCode:
+            referralCode ||
+            (partnerId === 'direct'
+              ? 'DIRECT'
+              : partnerName.split(' ')[0].toUpperCase() + '-REF'),
+        };
+        return targetCustomer;
+      }
+      return c;
+    });
+
+    let nextBookings = bookings;
+    if (updatePastBookings && targetCustomer) {
+      const custNameLower = targetCustomer.name.toLowerCase();
+      nextBookings = bookings.map((b) => {
+        if (b.customerId === customerId || b.customerName.toLowerCase() === custNameLower) {
           return {
-            ...p,
-            referredCustomersCount: p.referredCustomersCount + 1,
-            totalRevenueCAD: rev,
-            totalCommissionPaidCAD: comm,
-            netRevenueCAD: net,
-            roiPercent: roi,
+            ...b,
+            partnerId,
+            partnerName,
           };
         }
-        return p;
-      })
-    );
+        return b;
+      });
+      setBookings(nextBookings);
+    }
+
+    setCustomers(nextCustomers);
+    setPartners((prev) => recomputePartnerMetrics(prev, nextCustomers, nextBookings));
+  };
+
+  // Partner assignment to individual booking
+  const handleAssignPartnerToBooking = (
+    bookingId: string,
+    partnerId: string,
+    partnerName: string
+  ) => {
+    const nextBookings = bookings.map((b) => {
+      if (b.id === bookingId) {
+        return {
+          ...b,
+          partnerId,
+          partnerName,
+        };
+      }
+      return b;
+    });
+    setBookings(nextBookings);
+    setPartners((prev) => recomputePartnerMetrics(prev, customers, nextBookings));
   };
 
   // Add partner handler
   const handleAddNewPartner = (newPartner: Partner) => {
-    setPartners((prev) => [newPartner, ...prev]);
+    const nextPartners = [newPartner, ...partners];
+    setPartners(recomputePartnerMetrics(nextPartners, customers, bookings));
+  };
+
+  // Update partner handler
+  const handleUpdatePartner = (updatedPartner: Partner) => {
+    const nextPartners = partners.map((p) =>
+      p.id === updatedPartner.id ? updatedPartner : p
+    );
+    const recomputed = recomputePartnerMetrics(nextPartners, customers, bookings);
+    setPartners(recomputed);
+
+    // Update names in customers & bookings if partner name changed
+    setCustomers((prev) =>
+      prev.map((c) =>
+        c.partnerId === updatedPartner.id ? { ...c, partnerName: updatedPartner.name } : c
+      )
+    );
+    setBookings((prev) =>
+      prev.map((b) =>
+        b.partnerId === updatedPartner.id ? { ...b, partnerName: updatedPartner.name } : b
+      )
+    );
+  };
+
+  // Delete partner handler
+  const handleDeletePartner = (partnerId: string) => {
+    const nextPartners = partners.filter((p) => p.id !== partnerId);
+    const nextCustomers = customers.map((c) =>
+      c.partnerId === partnerId
+        ? { ...c, partnerId: 'direct', partnerName: 'Direct / Organic', referralCode: 'DIRECT' }
+        : c
+    );
+    const nextBookings = bookings.map((b) =>
+      b.partnerId === partnerId
+        ? { ...b, partnerId: 'direct', partnerName: 'Direct / Organic' }
+        : b
+    );
+    setCustomers(nextCustomers);
+    setBookings(nextBookings);
+    setPartners(recomputePartnerMetrics(nextPartners, nextCustomers, nextBookings));
   };
 
   // Add booking handler for clinic manager daily logging
   const handleAddNewBooking = (newBooking: ServiceBooking) => {
-    setBookings((prev) => [newBooking, ...prev]);
+    const nextBookings = [newBooking, ...bookings];
+    setBookings(nextBookings);
+
     // Automatically update customer's last visit, total visits and spend
-    setCustomers((prev) =>
-      prev.map((c) => {
-        if (c.name.toLowerCase() === newBooking.customerName.toLowerCase() || c.id === newBooking.customerId) {
-          const totalVisits = c.totalVisits + 1;
-          const totalSpendCAD = c.totalSpendCAD + newBooking.priceCAD;
-          const { rScore, fScore, mScore, segment } = computeRfmSegment(0, totalVisits, totalSpendCAD);
-          return {
-            ...c,
-            lastVisitDate: newBooking.bookingDate,
-            totalVisits,
-            totalSpendCAD,
-            recencyDays: 0,
-            recencyScore: rScore,
-            frequencyScore: fScore,
-            monetaryScore: mScore,
-            rfmSegment: segment,
-          };
-        }
-        return c;
-      })
+    const nextCustomers = customers.map((c) => {
+      if (
+        c.name.toLowerCase() === newBooking.customerName.toLowerCase() ||
+        c.id === newBooking.customerId
+      ) {
+        const totalVisits = c.totalVisits + 1;
+        const totalSpendCAD = c.totalSpendCAD + newBooking.priceCAD;
+        const { rScore, fScore, mScore, segment } = computeRfmSegment(
+          0,
+          totalVisits,
+          totalSpendCAD
+        );
+        return {
+          ...c,
+          lastVisitDate: newBooking.bookingDate,
+          totalVisits,
+          totalSpendCAD,
+          recencyDays: 0,
+          recencyScore: rScore,
+          frequencyScore: fScore,
+          monetaryScore: mScore,
+          rfmSegment: segment,
+        };
+      }
+      return c;
+    });
+
+    setCustomers(nextCustomers);
+    setPartners((prev) => recomputePartnerMetrics(prev, nextCustomers, nextBookings));
+  };
+
+  // Practitioner handlers
+  const handleAddNewPractitioner = (practitioner: Practitioner) => {
+    setPractitioners((prev) => [practitioner, ...prev]);
+  };
+
+  const handleUpdatePractitioner = (updated: Practitioner) => {
+    setPractitioners((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+  };
+
+  const handleDeletePractitioner = (id: string) => {
+    setPractitioners((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  // Procedure handlers
+  const handleAddNewProcedure = (procedure: ClinicProcedure) => {
+    setProcedures((prev) => [procedure, ...prev]);
+  };
+
+  const handleUpdateProcedure = (updated: ClinicProcedure) => {
+    setProcedures((prev) => prev.map((proc) => (proc.id === updated.id ? updated : proc)));
+  };
+
+  const handleDeleteProcedure = (id: string) => {
+    setProcedures((prev) => prev.filter((proc) => proc.id !== id));
+  };
+
+  // OKR & Quarterly Target Handlers
+  const handleUpdateQuarterTargets = (
+    quarterId: string,
+    updatedTargets: Partial<QuarterlyOkrPlan>
+  ) => {
+    setOkrPlans((prev) =>
+      prev.map((plan) => (plan.id === quarterId ? { ...plan, ...updatedTargets } : plan))
     );
+  };
+
+  const handleAddQuarter = (newQuarter: QuarterlyOkrPlan) => {
+    setOkrPlans((prev) => [newQuarter, ...prev]);
+  };
+
+  const handleAddObjective = (quarterId: string, newObjective: ClinicObjective) => {
+    setOkrPlans((prev) =>
+      prev.map((plan) =>
+        plan.id === quarterId
+          ? { ...plan, objectives: [...plan.objectives, newObjective] }
+          : plan
+      )
+    );
+  };
+
+  const handleUpdateObjective = (quarterId: string, updatedObjective: ClinicObjective) => {
+    setOkrPlans((prev) =>
+      prev.map((plan) =>
+        plan.id === quarterId
+          ? {
+              ...plan,
+              objectives: plan.objectives.map((obj) =>
+                obj.id === updatedObjective.id ? updatedObjective : obj
+              ),
+            }
+          : plan
+      )
+    );
+  };
+
+  const handleDeleteObjective = (quarterId: string, objectiveId: string) => {
+    setOkrPlans((prev) =>
+      prev.map((plan) =>
+        plan.id === quarterId
+          ? {
+              ...plan,
+              objectives: plan.objectives.filter((obj) => obj.id !== objectiveId),
+            }
+          : plan
+      )
+    );
+  };
+
+  const handleAddKeyResult = (
+    quarterId: string,
+    objectiveId: string,
+    newKR: KeyResult
+  ) => {
+    setOkrPlans((prev) =>
+      prev.map((plan) =>
+        plan.id === quarterId
+          ? {
+              ...plan,
+              objectives: plan.objectives.map((obj) =>
+                obj.id === objectiveId
+                  ? { ...obj, keyResults: [...obj.keyResults, newKR] }
+                  : obj
+              ),
+            }
+          : plan
+      )
+    );
+  };
+
+  const handleUpdateKeyResult = (
+    quarterId: string,
+    objectiveId: string,
+    updatedKR: KeyResult
+  ) => {
+    setOkrPlans((prev) =>
+      prev.map((plan) =>
+        plan.id === quarterId
+          ? {
+              ...plan,
+              objectives: plan.objectives.map((obj) =>
+                obj.id === objectiveId
+                  ? {
+                      ...obj,
+                      keyResults: obj.keyResults.map((kr) =>
+                        kr.id === updatedKR.id ? updatedKR : kr
+                      ),
+                    }
+                  : obj
+              ),
+            }
+          : plan
+      )
+    );
+  };
+
+  const handleDeleteKeyResult = (
+    quarterId: string,
+    objectiveId: string,
+    krId: string
+  ) => {
+    setOkrPlans((prev) =>
+      prev.map((plan) =>
+        plan.id === quarterId
+          ? {
+              ...plan,
+              objectives: plan.objectives.map((obj) =>
+                obj.id === objectiveId
+                  ? {
+                      ...obj,
+                      keyResults: obj.keyResults.filter((kr) => kr.id !== krId),
+                    }
+                  : obj
+              ),
+            }
+          : plan
+      )
+    );
+  };
+
+  // Calculate latest date timestamp in bookings for relative date range filtering (30d, 90d, 180d, 365d)
+  const maxBookingTimestamp = useMemo(() => {
+    let max = 0;
+    for (const b of bookings) {
+      const t = new Date(b.bookingDate).getTime();
+      if (!isNaN(t) && t > max) max = t;
+    }
+    return max || new Date('2026-10-23T23:59:59').getTime();
+  }, [bookings]);
+
+  // Set of customer IDs that match the active RFM segment slicer
+  const rfmEligibleCustomerIds = useMemo(() => {
+    if (filters.selectedRfmSegments.length === 0) return null;
+    const ids = new Set<string>();
+    for (const c of customers) {
+      if (filters.selectedRfmSegments.includes(c.rfmSegment)) {
+        ids.add(c.id);
+        if (c.name) ids.add(c.name.trim().toLowerCase());
+      }
+    }
+    return ids;
+  }, [customers, filters.selectedRfmSegments]);
+
+  // Helper to check if a partner is selected in slicers (handles both direct/organic IDs and partner IDs)
+  const isPartnerMatched = (
+    partnerId: string | undefined,
+    selectedPartnerIds: string[]
+  ) => {
+    if (selectedPartnerIds.length === 0) return true;
+    const isDirect = !partnerId || partnerId === 'direct' || partnerId === 'p-8';
+    return selectedPartnerIds.some((id) => {
+      if (id === 'p-8' || id === 'direct') return isDirect;
+      return id === partnerId;
+    });
   };
 
   // Cross-filtering computation across all visual models
   const filteredCustomers = useMemo(() => {
     return customers.filter((c) => {
+      // Date range filter based on patient recency
+      if (filters.dateRange !== 'all') {
+        const days =
+          filters.dateRange === '30d'
+            ? 30
+            : filters.dateRange === '90d'
+            ? 90
+            : filters.dateRange === '180d'
+            ? 180
+            : 365;
+        if (c.recencyDays > days) {
+          return false;
+        }
+      }
+
       // Partner filter
       if (
         filters.selectedPartners.length > 0 &&
-        !filters.selectedPartners.includes(c.partnerId)
+        !isPartnerMatched(c.partnerId, filters.selectedPartners)
       ) {
         return false;
       }
+
       // Service filter
       if (
         filters.selectedServices.length > 0 &&
@@ -403,6 +920,7 @@ export default function App() {
       ) {
         return false;
       }
+
       // RFM filter
       if (
         filters.selectedRfmSegments.length > 0 &&
@@ -410,57 +928,164 @@ export default function App() {
       ) {
         return false;
       }
+
       // Payment filter
-      if (filters.paymentType === 'directBilling' && c.insuranceProvider === 'None / Self-Pay') {
+      if (
+        filters.paymentType === 'directBilling' &&
+        (c.insuranceProvider === 'None / Self-Pay' || !c.insuranceProvider)
+      ) {
         return false;
       }
-      if (filters.paymentType === 'outOfPocket' && c.insuranceProvider !== 'None / Self-Pay') {
+      if (
+        filters.paymentType === 'outOfPocket' &&
+        c.insuranceProvider &&
+        c.insuranceProvider !== 'None / Self-Pay'
+      ) {
         return false;
       }
-      // Search
+
+      // Search query
       if (filters.searchQuery.trim()) {
         const query = filters.searchQuery.toLowerCase();
-        const matchName = c.name.toLowerCase().includes(query);
-        const matchPartner = c.partnerName.toLowerCase().includes(query);
-        const matchEmail = c.email.toLowerCase().includes(query);
-        const matchCode = c.referralCode.toLowerCase().includes(query);
-        if (!matchName && !matchPartner && !matchEmail && !matchCode) return false;
+        const matchName = c.name?.toLowerCase().includes(query);
+        const matchPartner = c.partnerName?.toLowerCase().includes(query);
+        const matchEmail = c.email?.toLowerCase().includes(query);
+        const matchCode = c.referralCode?.toLowerCase().includes(query);
+        const matchPhone = c.phone?.toLowerCase().includes(query);
+        const matchService = c.preferredService?.toLowerCase().includes(query);
+        const matchNotes = c.notes?.toLowerCase().includes(query);
+        if (
+          !matchName &&
+          !matchPartner &&
+          !matchEmail &&
+          !matchCode &&
+          !matchPhone &&
+          !matchService &&
+          !matchNotes
+        ) {
+          return false;
+        }
       }
+
       return true;
     });
   }, [customers, filters]);
 
-  const filteredPartners = useMemo(() => {
-    if (filters.selectedPartners.length === 0) return partners;
-    return partners.filter((p) => filters.selectedPartners.includes(p.id));
-  }, [partners, filters.selectedPartners]);
-
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
+      // Date range filter
+      if (filters.dateRange !== 'all') {
+        const days =
+          filters.dateRange === '30d'
+            ? 30
+            : filters.dateRange === '90d'
+            ? 90
+            : filters.dateRange === '180d'
+            ? 180
+            : 365;
+        const cutoff = maxBookingTimestamp - days * 24 * 60 * 60 * 1000;
+        const bTime = new Date(b.bookingDate).getTime();
+        if (!isNaN(bTime) && bTime < cutoff) {
+          return false;
+        }
+      }
+
+      // Partner filter
       if (
         filters.selectedPartners.length > 0 &&
-        !filters.selectedPartners.includes(b.partnerId)
+        !isPartnerMatched(b.partnerId, filters.selectedPartners)
       ) {
         return false;
       }
+
+      // Service category filter
       if (
         filters.selectedServices.length > 0 &&
         !filters.selectedServices.includes(b.serviceCategory)
       ) {
         return false;
       }
+
+      // RFM customer segment filter
+      if (rfmEligibleCustomerIds) {
+        const hasId = b.customerId && rfmEligibleCustomerIds.has(b.customerId);
+        const hasName =
+          b.customerName &&
+          rfmEligibleCustomerIds.has(b.customerName.trim().toLowerCase());
+        if (!hasId && !hasName) {
+          return false;
+        }
+      }
+
+      // Payment filter (Direct billing vs Out of pocket)
+      if (filters.paymentType === 'directBilling' && (b.insuranceBilledCAD || 0) <= 0) {
+        return false;
+      }
+      if (filters.paymentType === 'outOfPocket' && (b.insuranceBilledCAD || 0) > 0) {
+        return false;
+      }
+
+      // Search query
       if (filters.searchQuery.trim()) {
         const query = filters.searchQuery.toLowerCase();
-        const matchCustomer = b.customerName.toLowerCase().includes(query);
-        const matchPartner = b.partnerName.toLowerCase().includes(query);
-        const matchTherapist = b.therapist.toLowerCase().includes(query);
-        if (!matchCustomer && !matchPartner && !matchTherapist) return false;
+        const matchCustomer = b.customerName?.toLowerCase().includes(query);
+        const matchPartner = b.partnerName?.toLowerCase().includes(query);
+        const matchTherapist = b.therapist?.toLowerCase().includes(query);
+        const matchTitle = b.serviceTitle?.toLowerCase().includes(query);
+        const matchCategory = b.serviceCategory?.toLowerCase().includes(query);
+        if (
+          !matchCustomer &&
+          !matchPartner &&
+          !matchTherapist &&
+          !matchTitle &&
+          !matchCategory
+        ) {
+          return false;
+        }
       }
+
       return true;
     });
-  }, [bookings, filters]);
+  }, [bookings, filters, maxBookingTimestamp, rfmEligibleCustomerIds]);
 
-  const totalRevenue = bookings.reduce((acc, b) => acc + b.priceCAD, 0);
+  const filteredPartners = useMemo(() => {
+    let list = partners;
+    if (filters.selectedPartners.length > 0) {
+      list = partners.filter((p) => {
+        const isDirect = p.id === 'p-8' || p.id === 'direct';
+        return filters.selectedPartners.some((selId) => {
+          if (selId === 'p-8' || selId === 'direct') return isDirect;
+          return selId === p.id;
+        });
+      });
+    }
+    // Recompute partner metrics dynamically based on active filteredCustomers and filteredBookings
+    return recomputePartnerMetrics(list, filteredCustomers, filteredBookings);
+  }, [partners, filters.selectedPartners, filteredCustomers, filteredBookings]);
+
+  const filteredCacChannels = useMemo(() => {
+    if (filters.selectedPartners.length === 0) return cacChannels;
+    return cacChannels.filter((c) => {
+      const partner = partners.find(
+        (p) => p.name.toLowerCase() === c.partnerOrChannel.toLowerCase()
+      );
+      if (partner) {
+        return filters.selectedPartners.includes(partner.id);
+      }
+      if (
+        (filters.selectedPartners.includes('p-8') ||
+          filters.selectedPartners.includes('direct')) &&
+        !c.isPartner
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }, [cacChannels, filters.selectedPartners, partners]);
+
+  const filteredTotalRevenue = useMemo(() => {
+    return filteredBookings.reduce((acc, b) => acc + b.priceCAD, 0);
+  }, [filteredBookings]);
 
   // Gatekeeper protection screen (protects public dashboard on Vercel)
   if (!isGatekeeperUnlocked) {
@@ -488,8 +1113,8 @@ export default function App() {
         onSignIn={handleSignIn}
         onSignOut={handleSignOut}
         isLoadingAuth={isLoadingAuth}
-        totalRevenue={totalRevenue}
-        totalCustomers={customers.length}
+        totalRevenue={filteredTotalRevenue}
+        totalCustomers={filteredCustomers.length}
         sheetUrl={syncState.sheetUrl}
         isDarkMode={isDarkMode}
         onToggleTheme={() => setIsDarkMode(!isDarkMode)}
@@ -513,8 +1138,28 @@ export default function App() {
             customers={filteredCustomers}
             partners={filteredPartners}
             bookings={filteredBookings}
-            cacChannels={cacChannels}
+            cacChannels={filteredCacChannels}
+            okrPlans={okrPlans}
             onNavigateTab={setActiveTab}
+            isDarkMode={isDarkMode}
+          />
+        )}
+
+        {activeTab === 'okrs' && (
+          <OkrDashboard
+            okrPlans={okrPlans}
+            customers={customers}
+            partners={partners}
+            bookings={bookings}
+            cacChannels={cacChannels}
+            onUpdateQuarterTargets={handleUpdateQuarterTargets}
+            onAddQuarter={handleAddQuarter}
+            onAddObjective={handleAddObjective}
+            onUpdateObjective={handleUpdateObjective}
+            onDeleteObjective={handleDeleteObjective}
+            onAddKeyResult={handleAddKeyResult}
+            onUpdateKeyResult={handleUpdateKeyResult}
+            onDeleteKeyResult={handleDeleteKeyResult}
             isDarkMode={isDarkMode}
           />
         )}
@@ -548,23 +1193,35 @@ export default function App() {
 
         {activeTab === 'cac' && (
           <CacAnalysisDashboard
-            cacChannels={cacChannels}
+            cacChannels={filteredCacChannels}
             isDarkMode={isDarkMode}
           />
         )}
 
         {activeTab === 'sheet' && (
           <GoogleSheetTrackerView
-            customers={filteredCustomers}
-            partners={filteredPartners}
-            bookings={filteredBookings}
+            customers={customers}
+            partners={partners}
+            bookings={bookings}
             cacChannels={cacChannels}
+            practitioners={practitioners}
+            procedures={procedures}
             syncState={syncState}
             setSyncState={setSyncState}
             accessToken={accessToken}
             onAddNewCustomer={handleAddNewCustomer}
+            onAssignPartnerToCustomer={handleAssignPartnerToCustomer}
+            onAssignPartnerToBooking={handleAssignPartnerToBooking}
             onAddNewPartner={handleAddNewPartner}
+            onUpdatePartner={handleUpdatePartner}
+            onDeletePartner={handleDeletePartner}
             onAddNewBooking={handleAddNewBooking}
+            onAddNewPractitioner={handleAddNewPractitioner}
+            onUpdatePractitioner={handleUpdatePractitioner}
+            onDeletePractitioner={handleDeletePractitioner}
+            onAddNewProcedure={handleAddNewProcedure}
+            onUpdateProcedure={handleUpdateProcedure}
+            onDeleteProcedure={handleDeleteProcedure}
             onOpenSignIn={handleSignIn}
             onRefreshFromSheet={handleRefreshFromSheet}
             isDarkMode={isDarkMode}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   FileSpreadsheet,
   CloudUpload,
@@ -19,6 +19,17 @@ import {
   Sparkles,
   Zap,
   Settings,
+  Trash2,
+  Pencil,
+  UserCheck,
+  UserPlus,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Check,
+  X,
+  Filter,
 } from 'lucide-react';
 import {
   Customer,
@@ -26,6 +37,11 @@ import {
   ServiceBooking,
   CacChannelSpend,
   GoogleSheetSyncState,
+  Practitioner,
+  ClinicProcedure,
+  PartnerCategory,
+  ServiceCategory,
+  RfmSegment,
 } from '../types';
 import {
   createWelltheraGoogleSheet,
@@ -35,6 +51,7 @@ import {
   DEFAULT_TARGET_DRIVE_FOLDER_ID,
   DEFAULT_TARGET_DRIVE_FOLDER_URL,
 } from '../services/googleSheets';
+import { initialPractitioners, initialProcedures } from '../data/initialData';
 import { ConfirmationModal } from './ConfirmationModal';
 import { GoogleSheetsSetupModal } from './GoogleSheetsSetupModal';
 import { ManagerDailyLogView } from './ManagerDailyLogView';
@@ -44,31 +61,65 @@ interface GoogleSheetTrackerViewProps {
   partners: Partner[];
   bookings: ServiceBooking[];
   cacChannels: CacChannelSpend[];
+  practitioners?: Practitioner[];
+  procedures?: ClinicProcedure[];
   syncState: GoogleSheetSyncState;
   setSyncState: React.Dispatch<React.SetStateAction<GoogleSheetSyncState>>;
   accessToken: string | null;
   onAddNewCustomer: (customer: Customer) => void;
+  onAssignPartnerToCustomer?: (
+    customerId: string,
+    partnerId: string,
+    partnerName: string,
+    referralCode?: string,
+    updatePastBookings?: boolean
+  ) => void;
+  onAssignPartnerToBooking?: (
+    bookingId: string,
+    partnerId: string,
+    partnerName: string
+  ) => void;
   onAddNewPartner: (partner: Partner) => void;
+  onUpdatePartner?: (partner: Partner) => void;
+  onDeletePartner?: (id: string) => void;
   onAddNewBooking?: (booking: ServiceBooking) => void;
+  onAddNewPractitioner?: (practitioner: Practitioner) => void;
+  onUpdatePractitioner?: (practitioner: Practitioner) => void;
+  onDeletePractitioner?: (id: string) => void;
+  onAddNewProcedure?: (procedure: ClinicProcedure) => void;
+  onUpdateProcedure?: (procedure: ClinicProcedure) => void;
+  onDeleteProcedure?: (id: string) => void;
   onOpenSignIn: () => void;
   onRefreshFromSheet?: () => Promise<void>;
   isDarkMode?: boolean;
   onOpenHelp?: () => void;
 }
 
-type SheetTab = 'manager' | 'customers' | 'partners' | 'bookings' | 'cac';
+type SheetTab = 'manager' | 'customers' | 'partners' | 'bookings' | 'cac' | 'practitioners' | 'procedures';
 
 export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   customers,
   partners,
   bookings,
   cacChannels,
+  practitioners = initialPractitioners,
+  procedures = initialProcedures,
   syncState,
   setSyncState,
   accessToken,
   onAddNewCustomer,
+  onAssignPartnerToCustomer,
+  onAssignPartnerToBooking,
   onAddNewPartner,
+  onUpdatePartner,
+  onDeletePartner,
   onAddNewBooking,
+  onAddNewPractitioner,
+  onUpdatePractitioner,
+  onDeletePractitioner,
+  onAddNewProcedure,
+  onUpdateProcedure,
+  onDeleteProcedure,
   onOpenSignIn,
   onRefreshFromSheet,
   isDarkMode = false,
@@ -78,8 +129,28 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
   const [isAddPartnerModalOpen, setIsAddPartnerModalOpen] = useState(false);
+  const [isAddPractitionerModalOpen, setIsAddPractitionerModalOpen] = useState(false);
+  const [isAddProcedureModalOpen, setIsAddProcedureModalOpen] = useState(false);
   const [showStaffQuickGuide, setShowStaffQuickGuide] = useState(false);
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
+
+  // New Practitioner Form State
+  const [newPractName, setNewPractName] = useState('');
+  const [newPractTitle, setNewPractTitle] = useState('Registered Massage Therapist');
+  const [newPractDiscipline, setNewPractDiscipline] = useState('Massage Therapy');
+  const [newPractEmail, setNewPractEmail] = useState('');
+  const [newPractPhone, setNewPractPhone] = useState('');
+  const [newPractServices, setNewPractServices] = useState('Brazilian Lymphatic Drainage, Registered Massage Therapy');
+
+  // New Procedure Form State
+  const [newProcName, setNewProcName] = useState('');
+  const [newProcCategory, setNewProcCategory] = useState('Registered Massage Therapy');
+  const [newProcDuration, setNewProcDuration] = useState(60);
+  const [newProcPrice, setNewProcPrice] = useState(150);
+  const [newProcInsurance, setNewProcInsurance] = useState(true);
+  const [newProcBilling, setNewProcBilling] = useState(150);
+  const [newProcCopay, setNewProcCopay] = useState(0);
+  const [newProcDesc, setNewProcDesc] = useState('');
 
   // Destructive / mutating operations confirmation state
   const [confirmationConfig, setConfirmationConfig] = useState<{
@@ -94,6 +165,228 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
     description: '',
     action: async () => {},
   });
+
+  // Assign Partner to Customer Modal State
+  const [assigningCustomer, setAssigningCustomer] = useState<Customer | null>(null);
+  const [assignPartnerId, setAssignPartnerId] = useState<string>('p-1');
+  const [assignReferralCode, setAssignReferralCode] = useState<string>('');
+  const [assignUpdateBookings, setAssignUpdateBookings] = useState<boolean>(true);
+
+  // Assign Partner to Booking Modal State
+  const [assigningBooking, setAssigningBooking] = useState<ServiceBooking | null>(null);
+  const [assignBookingPartnerId, setAssignBookingPartnerId] = useState<string>('p-1');
+
+  // Edit Partner Modal State
+  const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
+
+  // Edit Practitioner Modal State
+  const [editingPractitioner, setEditingPractitioner] = useState<Practitioner | null>(null);
+  const [editPractServices, setEditPractServices] = useState<string>('');
+
+  // Edit Procedure Modal State
+  const [editingProcedure, setEditingProcedure] = useState<ClinicProcedure | null>(null);
+  const [editProcPractitioners, setEditProcPractitioners] = useState<string>('');
+
+  // Customer Filter & Pagination State (for 1,090 ClinicSense records)
+  const [customerSearch, setCustomerSearch] = useState<string>('');
+  const [customerPartnerFilter, setCustomerPartnerFilter] = useState<string>('all');
+  const [customerRfmFilter, setCustomerRfmFilter] = useState<string>('all');
+  const [customerPage, setCustomerPage] = useState<number>(1);
+  const [customerPageSize, setCustomerPageSize] = useState<number>(25);
+
+  // Filtered & Paginated Customers List
+  const filteredCustomersList = useMemo(() => {
+    return customers.filter((c) => {
+      // Search across name, email, phone, service, referral code, partner
+      if (customerSearch.trim()) {
+        const q = customerSearch.toLowerCase();
+        const matchesName = c.name?.toLowerCase().includes(q);
+        const matchesEmail = c.email?.toLowerCase().includes(q);
+        const matchesPhone = c.phone?.toLowerCase().includes(q);
+        const matchesService = c.preferredService?.toLowerCase().includes(q);
+        const matchesCode = c.referralCode?.toLowerCase().includes(q);
+        const matchesPartner = c.partnerName?.toLowerCase().includes(q);
+        if (
+          !matchesName &&
+          !matchesEmail &&
+          !matchesPhone &&
+          !matchesService &&
+          !matchesCode &&
+          !matchesPartner
+        ) {
+          return false;
+        }
+      }
+      // Partner filter
+      if (customerPartnerFilter === 'unassigned') {
+        if (c.partnerId && c.partnerId !== 'direct' && c.partnerId !== 'p-8') {
+          return false;
+        }
+      } else if (customerPartnerFilter !== 'all') {
+        if (c.partnerId !== customerPartnerFilter) {
+          return false;
+        }
+      }
+      // RFM filter
+      if (customerRfmFilter !== 'all') {
+        if (c.rfmSegment !== customerRfmFilter) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [customers, customerSearch, customerPartnerFilter, customerRfmFilter]);
+
+  const totalCustomerPages = Math.max(1, Math.ceil(filteredCustomersList.length / customerPageSize));
+  const paginatedCustomers = useMemo(() => {
+    const start = (customerPage - 1) * customerPageSize;
+    return filteredCustomersList.slice(start, start + customerPageSize);
+  }, [filteredCustomersList, customerPage, customerPageSize]);
+
+  // Open Partner Assignment Modal for a Customer
+  const handleOpenAssignCustomerModal = (customer: Customer) => {
+    setAssigningCustomer(customer);
+    const initialPartnerId =
+      customer.partnerId && customer.partnerId !== 'direct'
+        ? customer.partnerId
+        : partners[0]?.id || 'p-1';
+    setAssignPartnerId(initialPartnerId);
+
+    const partner = partners.find((p) => p.id === initialPartnerId);
+    setAssignReferralCode(
+      customer.referralCode && customer.referralCode !== 'DIRECT'
+        ? customer.referralCode
+        : partner?.referralCode || (partner ? partner.name.split(' ')[0].toUpperCase() + '-REF' : 'REF')
+    );
+    setAssignUpdateBookings(true);
+  };
+
+  // Submit Partner Assignment for a Customer
+  const handleSaveCustomerPartner = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assigningCustomer) return;
+
+    if (assignPartnerId === 'direct') {
+      if (onAssignPartnerToCustomer) {
+        onAssignPartnerToCustomer(
+          assigningCustomer.id,
+          'direct',
+          'Direct / Organic',
+          'DIRECT',
+          assignUpdateBookings
+        );
+      }
+    } else {
+      const selectedPartner = partners.find((p) => p.id === assignPartnerId);
+      const partnerName = selectedPartner ? selectedPartner.name : 'Referral Partner';
+      const code =
+        assignReferralCode.trim() ||
+        selectedPartner?.referralCode ||
+        partnerName.split(' ')[0].toUpperCase() + '-REF';
+
+      if (onAssignPartnerToCustomer) {
+        onAssignPartnerToCustomer(
+          assigningCustomer.id,
+          assignPartnerId,
+          partnerName,
+          code,
+          assignUpdateBookings
+        );
+      }
+    }
+    setAssigningCustomer(null);
+  };
+
+  // Open Partner Assignment for a Booking
+  const handleOpenAssignBookingModal = (booking: ServiceBooking) => {
+    setAssigningBooking(booking);
+    setAssignBookingPartnerId(booking.partnerId || partners[0]?.id || 'p-1');
+  };
+
+  // Submit Partner Assignment for a Booking
+  const handleSaveBookingPartner = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assigningBooking) return;
+
+    if (assignBookingPartnerId === 'direct') {
+      if (onAssignPartnerToBooking) {
+        onAssignPartnerToBooking(assigningBooking.id, 'direct', 'Direct / Organic');
+      }
+    } else {
+      const partner = partners.find((p) => p.id === assignBookingPartnerId);
+      const partnerName = partner ? partner.name : 'Referral Partner';
+      if (onAssignPartnerToBooking) {
+        onAssignPartnerToBooking(assigningBooking.id, assignBookingPartnerId, partnerName);
+      }
+    }
+    setAssigningBooking(null);
+  };
+
+  // Open Edit Practitioner Modal
+  const handleOpenEditPractitioner = (p: Practitioner) => {
+    setEditingPractitioner(p);
+    setEditPractServices(p.servicesOffered.join(', '));
+  };
+
+  // Save Edited Practitioner
+  const handleSaveEditPractitioner = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPractitioner) return;
+
+    const updated: Practitioner = {
+      ...editingPractitioner,
+      servicesOffered: editPractServices
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+
+    if (onUpdatePractitioner) {
+      onUpdatePractitioner(updated);
+    }
+    setEditingPractitioner(null);
+  };
+
+  // Open Edit Procedure Modal
+  const handleOpenEditProcedure = (proc: ClinicProcedure) => {
+    setEditingProcedure(proc);
+    setEditProcPractitioners(proc.assignedPractitioners.join(', '));
+  };
+
+  // Save Edited Procedure
+  const handleSaveEditProcedure = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProcedure) return;
+
+    const updated: ClinicProcedure = {
+      ...editingProcedure,
+      assignedPractitioners: editProcPractitioners
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+
+    if (onUpdateProcedure) {
+      onUpdateProcedure(updated);
+    }
+    setEditingProcedure(null);
+  };
+
+  // Open Edit Partner Modal
+  const handleOpenEditPartner = (p: Partner) => {
+    setEditingPartner(p);
+  };
+
+  // Save Edited Partner
+  const handleSaveEditPartner = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPartner) return;
+
+    if (onUpdatePartner) {
+      onUpdatePartner(editingPartner);
+    }
+    setEditingPartner(null);
+  };
 
   // New Customer Form State
   const [newCustName, setNewCustName] = useState('');
@@ -111,6 +404,59 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   const [newPartnerContact, setNewPartnerContact] = useState('');
   const [newPartnerEmail, setNewPartnerEmail] = useState('');
   const [newPartnerCommission, setNewPartnerCommission] = useState(15);
+
+  const handleCreatePractitioner = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPractName.trim()) return;
+
+    const newPr: Practitioner = {
+      id: `pr-${practitioners.length + 1}`,
+      name: newPractName.trim(),
+      title: newPractTitle.trim() || 'Registered Massage Therapist',
+      discipline: newPractDiscipline.trim() || 'Massage Therapy',
+      email: newPractEmail.trim(),
+      phone: newPractPhone.trim(),
+      status: 'Active',
+      servicesOffered: newPractServices
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+
+    if (onAddNewPractitioner) {
+      onAddNewPractitioner(newPr);
+    }
+    setNewPractName('');
+    setNewPractEmail('');
+    setNewPractPhone('');
+    setIsAddPractitionerModalOpen(false);
+  };
+
+  const handleCreateProcedure = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProcName.trim()) return;
+
+    const newProc: ClinicProcedure = {
+      id: `proc-${procedures.length + 1}`,
+      name: newProcName.trim(),
+      category: (newProcCategory.trim() as any) || 'Registered Massage Therapy',
+      durationMinutes: Number(newProcDuration) || 60,
+      priceCAD: Number(newProcPrice) || 150,
+      insuranceCovered: newProcInsurance,
+      typicalInsuranceBillingCAD: Number(newProcBilling) || 0,
+      typicalCopayCAD: Number(newProcCopay) || 0,
+      assignedPractitioners: ['All Active Practitioners'],
+      status: 'Active',
+      description: newProcDesc.trim() || 'Clinical service at Wellthera Barrie',
+    };
+
+    if (onAddNewProcedure) {
+      onAddNewProcedure(newProc);
+    }
+    setNewProcName('');
+    setNewProcDesc('');
+    setIsAddProcedureModalOpen(false);
+  };
 
   const handleCreateSheetPrompt = () => {
     if (!accessToken) {
@@ -142,6 +488,8 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
               partners,
               bookings,
               cacChannels,
+              practitioners,
+              procedures,
             },
             DEFAULT_TARGET_DRIVE_FOLDER_ID
           );
@@ -632,12 +980,14 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                 { id: 'partners', label: '2. Partners & ROI', count: partners.length },
                 { id: 'bookings', label: '3. Services & Bookings', count: bookings.length },
                 { id: 'cac', label: '4. CAC & Channel Costs', count: cacChannels.length },
+                { id: 'practitioners', label: '5. Practitioners & Team', count: practitioners.length },
+                { id: 'procedures', label: '6. Procedures & Treatments', count: procedures.length },
               ] as const
             ).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3.5 py-2 text-xs font-semibold rounded-t-lg transition-all flex items-center gap-1.5 ${
+                className={`px-3.5 py-2 text-xs font-semibold rounded-t-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   activeTab === tab.id
                     ? isDarkMode
                       ? 'bg-[#1a1e13] text-[#e6b000] border-t-2 border-[#e6b000] border-x border-[#292e1e]'
@@ -680,6 +1030,24 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                 <span>Add Partner Row</span>
               </button>
             )}
+            {activeTab === 'practitioners' && (
+              <button
+                onClick={() => setIsAddPractitionerModalOpen(true)}
+                className="px-3 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-semibold text-xs rounded-full transition-colors flex items-center gap-1 shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Practitioner</span>
+              </button>
+            )}
+            {activeTab === 'procedures' && (
+              <button
+                onClick={() => setIsAddProcedureModalOpen(true)}
+                className="px-3 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-semibold text-xs rounded-full transition-colors flex items-center gap-1 shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Service / Treatment</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -690,6 +1058,8 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
               bookings={bookings}
               customers={customers}
               partners={partners}
+              practitioners={practitioners}
+              procedures={procedures}
               onAddNewBooking={onAddNewBooking || (() => {})}
               onAddNewCustomer={onAddNewCustomer}
               syncState={syncState}
@@ -701,129 +1071,431 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
 
         {/* Tab 1: Customers Table View */}
         {activeTab === 'customers' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr
-                  className={`uppercase text-[10px] tracking-wider border-b ${
-                    isDarkMode
-                      ? 'bg-[#181b11] border-[#292e1e] text-[#8b927a]'
-                      : 'bg-[#f9f8f5] border-[#e7e3da] text-[#7d7663]'
-                  }`}
-                >
-                  <th className="py-2.5 px-3 font-mono font-bold">ID</th>
-                  <th className="py-2.5 px-4 font-bold">Patient Name</th>
-                  <th className="py-2.5 px-3 font-bold">Partner Referral</th>
-                  <th className="py-2.5 px-3 font-bold">Referral Code</th>
-                  <th className="py-2.5 px-2 font-bold text-center">Visits</th>
-                  <th className="py-2.5 px-3 font-bold">Total CAD</th>
-                  <th className="py-2.5 px-3 font-bold">Preferred Service</th>
-                  <th className="py-2.5 px-3 font-bold">Direct Insurer</th>
-                  <th className="py-2.5 px-3 font-bold">RFM Segment</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-inherit font-mono">
-                {customers.map((c) => (
-                  <tr
-                    key={c.id}
-                    className={`transition-colors ${
+          <div className="space-y-4">
+            {/* Filter, Search & Partner Assignment Bar */}
+            <div
+              className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs ${
+                isDarkMode
+                  ? 'bg-[#181b11] border-[#292e1e]'
+                  : 'bg-[#fbfaf8] border-[#e7e3da]'
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+                {/* Search Box */}
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 opacity-50" />
+                  <input
+                    type="text"
+                    value={customerSearch}
+                    onChange={(e) => {
+                      setCustomerSearch(e.target.value);
+                      setCustomerPage(1);
+                    }}
+                    placeholder="Search 1,090 patients by name, email, phone, or service..."
+                    className={`w-full pl-8 pr-7 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
                       isDarkMode
-                        ? 'hover:bg-[#202517] border-[#292e1e]'
-                        : 'hover:bg-[#f4f1eb] border-[#e7e3da]'
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                  {customerSearch && (
+                    <button
+                      onClick={() => {
+                        setCustomerSearch('');
+                        setCustomerPage(1);
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Partner Filter Dropdown */}
+                <div className="flex items-center gap-1">
+                  <Filter className="w-3.5 h-3.5 opacity-60" />
+                  <select
+                    value={customerPartnerFilter}
+                    onChange={(e) => {
+                      setCustomerPartnerFilter(e.target.value);
+                      setCustomerPage(1);
+                    }}
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
                     }`}
                   >
-                    <td className="py-2.5 px-3 opacity-60">{c.id}</td>
-                    <td className="py-2.5 px-4 font-sans font-semibold text-sm">
-                      {c.name}
-                    </td>
-                    <td className="py-2.5 px-3 font-sans">{c.partnerName}</td>
-                    <td className="py-2.5 px-3 text-[#686e4a] dark:text-[#aab187] font-bold">
-                      {c.referralCode}
-                    </td>
-                    <td className="py-2.5 px-2 text-center font-bold">{c.totalVisits}</td>
-                    <td className="py-2.5 px-3 font-bold text-[#686e4a] dark:text-[#aab187]">
-                      ${c.totalSpendCAD}
-                    </td>
-                    <td className="py-2.5 px-3 font-sans text-xs">{c.preferredService}</td>
-                    <td className="py-2.5 px-3 font-sans text-xs">{c.insuranceProvider}</td>
-                    <td className="py-2.5 px-3 font-sans">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                    <option value="all">All Patients ({customers.length})</option>
+                    <option value="unassigned">
+                      Direct / Unassigned ({customers.filter((c) => !c.partnerId || c.partnerId === 'direct' || c.partnerId === 'p-8').length})
+                    </option>
+                    {partners
+                      .filter((p) => p.id !== 'p-8')
+                      .map((p) => {
+                        const count = customers.filter((c) => c.partnerId === p.id).length;
+                        return (
+                          <option key={p.id} value={p.id}>
+                            Partner: {p.name} ({count})
+                          </option>
+                        );
+                      })}
+                  </select>
+                </div>
+
+                {/* RFM Segment Dropdown */}
+                <select
+                  value={customerRfmFilter}
+                  onChange={(e) => {
+                    setCustomerRfmFilter(e.target.value);
+                    setCustomerPage(1);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                >
+                  <option value="all">All RFM Segments</option>
+                  <option value="Champions">Champions</option>
+                  <option value="Loyal Customers">Loyal Customers</option>
+                  <option value="Potential Loyalists">Potential Loyalists</option>
+                  <option value="Recent Customers">Recent Customers</option>
+                  <option value="Promising">Promising</option>
+                  <option value="Needs Attention">Needs Attention</option>
+                  <option value="At Risk">At Risk</option>
+                  <option value="Can't Lose Them">Can't Lose Them</option>
+                  <option value="Hibernating">Hibernating</option>
+                </select>
+              </div>
+
+              {/* Status counter & Add Button */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="opacity-70">
+                  Showing <strong>{filteredCustomersList.length}</strong> matching patients
+                </span>
+                <button
+                  onClick={() => setIsAddCustomerModalOpen(true)}
+                  className="px-3 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-semibold rounded-lg flex items-center gap-1 shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Patient</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Patients Table */}
+            <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr
+                    className={`uppercase text-[10px] tracking-wider border-b ${
+                      isDarkMode
+                        ? 'bg-[#181b11] border-[#292e1e] text-[#8b927a]'
+                        : 'bg-[#f9f8f5] border-[#e7e3da] text-[#7d7663]'
+                    }`}
+                  >
+                    <th className="py-2.5 px-3 font-mono font-bold">ID</th>
+                    <th className="py-2.5 px-4 font-bold text-emerald-800 dark:text-emerald-300">
+                      Patient Name
+                    </th>
+                    <th className="py-2.5 px-3 font-bold">Partner Referral (Click to Edit)</th>
+                    <th className="py-2.5 px-3 font-bold">Referral Code</th>
+                    <th className="py-2.5 px-2 font-bold text-center">Visits</th>
+                    <th className="py-2.5 px-3 font-bold">Lifetime CAD</th>
+                    <th className="py-2.5 px-3 font-bold">Preferred Service</th>
+                    <th className="py-2.5 px-3 font-bold">Direct Insurer</th>
+                    <th className="py-2.5 px-3 font-bold">RFM Segment</th>
+                    <th className="py-2.5 px-3 font-bold text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-inherit font-mono">
+                  {paginatedCustomers.map((c) => {
+                    const isPartnerAssigned =
+                      c.partnerId && c.partnerId !== 'direct' && c.partnerId !== 'p-8';
+                    return (
+                      <tr
+                        key={c.id}
+                        className={`transition-colors ${
                           isDarkMode
-                            ? 'bg-[#14160e] text-[#c7ccaa] border-[#292e1e]'
-                            : 'bg-[#edf0e6] text-[#52573a] border-[#bcc2a4]'
+                            ? 'hover:bg-[#202517] border-[#292e1e]'
+                            : 'hover:bg-[#f4f1eb] border-[#e7e3da]'
                         }`}
                       >
-                        {c.rfmSegment}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <td className="py-2.5 px-3 opacity-60">{c.id}</td>
+                        <td className="py-2.5 px-4 font-sans whitespace-nowrap">
+                          <div className="font-bold text-sm text-emerald-950 dark:text-emerald-100 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 px-2.5 py-1 rounded-md inline-block shadow-2xs">
+                            {c.name}
+                          </div>
+                          {(c.email || c.phone) && (
+                            <div className="text-[10px] opacity-60 font-mono mt-0.5">
+                              {c.email || c.phone}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 font-sans whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAssignCustomerModal(c)}
+                            className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border shadow-2xs ${
+                              isPartnerAssigned
+                                ? isDarkMode
+                                  ? 'bg-[#686e4a]/25 text-[#c7ccaa] border-[#686e4a]/40 hover:bg-[#686e4a]/40'
+                                  : 'bg-[#edf0e6] text-[#52573a] border-[#bcc2a4] hover:bg-[#dfe4d3]'
+                                : isDarkMode
+                                ? 'bg-amber-950/40 text-amber-300 border-amber-800/60 hover:bg-amber-900/50'
+                                : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                            }`}
+                            title="Click to assign or reassign partner"
+                          >
+                            <span>{c.partnerName || 'Direct / Organic'}</span>
+                            <Pencil className="w-3 h-3 opacity-70" />
+                          </button>
+                        </td>
+                        <td className="py-2.5 px-3 text-[#686e4a] dark:text-[#aab187] font-bold">
+                          {c.referralCode}
+                        </td>
+                        <td className="py-2.5 px-2 text-center font-bold">{c.totalVisits}</td>
+                        <td className="py-2.5 px-3 font-bold text-[#686e4a] dark:text-[#aab187]">
+                          ${c.totalSpendCAD}
+                        </td>
+                        <td className="py-2.5 px-3 font-sans text-xs">{c.preferredService}</td>
+                        <td className="py-2.5 px-3 font-sans text-xs">{c.insuranceProvider}</td>
+                        <td className="py-2.5 px-3 font-sans">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              isDarkMode
+                                ? 'bg-[#14160e] text-[#c7ccaa] border-[#292e1e]'
+                                : 'bg-[#edf0e6] text-[#52573a] border-[#bcc2a4]'
+                            }`}
+                          >
+                            {c.rfmSegment}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAssignCustomerModal(c)}
+                            className="px-2 py-1 rounded-md text-[11px] font-semibold bg-[#686e4a]/10 hover:bg-[#686e4a]/20 text-[#52573a] dark:text-[#c7ccaa] transition-colors cursor-pointer flex items-center gap-1 mx-auto"
+                            title="Assign or reassign referral partner"
+                          >
+                            <UserCheck className="w-3 h-3" />
+                            <span>Assign</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            <div
+              className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs ${
+                isDarkMode
+                  ? 'bg-[#181b11] border-[#292e1e]'
+                  : 'bg-[#fbfaf8] border-[#e7e3da]'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="opacity-70">
+                  Showing{' '}
+                  <strong>
+                    {filteredCustomersList.length === 0
+                      ? 0
+                      : (customerPage - 1) * customerPageSize + 1}
+                  </strong>{' '}
+                  to{' '}
+                  <strong>
+                    {Math.min(customerPage * customerPageSize, filteredCustomersList.length)}
+                  </strong>{' '}
+                  of <strong>{filteredCustomersList.length}</strong> patients
+                </span>
+                <span className="opacity-40">|</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="opacity-70">Rows:</span>
+                  <select
+                    value={customerPageSize}
+                    onChange={(e) => {
+                      setCustomerPageSize(Number(e.target.value));
+                      setCustomerPage(1);
+                    }}
+                    className={`px-2 py-1 rounded border text-xs focus:outline-none ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={250}>250</option>
+                    <option value={filteredCustomersList.length}>All</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Page Buttons */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCustomerPage(1)}
+                  disabled={customerPage === 1}
+                  className="p-1.5 rounded border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-black/5 dark:hover:bg-white/5"
+                  title="First Page"
+                >
+                  <ChevronsLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setCustomerPage((prev) => Math.max(1, prev - 1))}
+                  disabled={customerPage === 1}
+                  className="p-1.5 rounded border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-black/5 dark:hover:bg-white/5"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="px-3 py-1 font-semibold">
+                  Page {customerPage} of {totalCustomerPages}
+                </span>
+                <button
+                  onClick={() => setCustomerPage((prev) => Math.min(totalCustomerPages, prev + 1))}
+                  disabled={customerPage >= totalCustomerPages}
+                  className="p-1.5 rounded border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-black/5 dark:hover:bg-white/5"
+                  title="Next Page"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setCustomerPage(totalCustomerPages)}
+                  disabled={customerPage >= totalCustomerPages}
+                  className="p-1.5 rounded border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-black/5 dark:hover:bg-white/5"
+                  title="Last Page"
+                >
+                  <ChevronsRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Tab 2: Partners Table View */}
         {activeTab === 'partners' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr
-                  className={`uppercase text-[10px] tracking-wider border-b ${
-                    isDarkMode
-                      ? 'bg-[#181b11] border-[#292e1e] text-[#8b927a]'
-                      : 'bg-[#f9f8f5] border-[#e7e3da] text-[#7d7663]'
-                  }`}
-                >
-                  <th className="py-2.5 px-3 font-mono font-bold">ID</th>
-                  <th className="py-2.5 px-4 font-bold">Partner Name</th>
-                  <th className="py-2.5 px-3 font-bold">Category</th>
-                  <th className="py-2.5 px-3 font-bold">Contact</th>
-                  <th className="py-2.5 px-2 font-bold text-center">Patients</th>
-                  <th className="py-2.5 px-3 font-bold">Gross CAD</th>
-                  <th className="py-2.5 px-3 font-bold">Commission CAD</th>
-                  <th className="py-2.5 px-3 font-bold">Net Margin CAD</th>
-                  <th className="py-2.5 px-3 font-bold">ROI %</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-inherit font-mono">
-                {partners.map((p) => (
+          <div className="space-y-4">
+            <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
                   <tr
-                    key={p.id}
-                    className={`transition-colors ${
+                    className={`uppercase text-[10px] tracking-wider border-b ${
                       isDarkMode
-                        ? 'hover:bg-[#202517] border-[#292e1e]'
-                        : 'hover:bg-[#f4f1eb] border-[#e7e3da]'
+                        ? 'bg-[#181b11] border-[#292e1e] text-[#8b927a]'
+                        : 'bg-[#f9f8f5] border-[#e7e3da] text-[#7d7663]'
                     }`}
                   >
-                    <td className="py-2.5 px-3 opacity-60">{p.id}</td>
-                    <td className="py-2.5 px-4 font-sans font-semibold text-sm">
-                      {p.name}
-                    </td>
-                    <td className="py-2.5 px-3 font-sans text-xs">{p.category}</td>
-                    <td className="py-2.5 px-3 font-sans text-xs">{p.contactPerson}</td>
-                    <td className="py-2.5 px-2 text-center font-bold">
-                      {p.referredCustomersCount}
-                    </td>
-                    <td className="py-2.5 px-3 font-bold">${p.totalRevenueCAD}</td>
-                    <td className="py-2.5 px-3">${p.totalCommissionPaidCAD}</td>
-                    <td className="py-2.5 px-3 font-bold text-[#686e4a] dark:text-[#aab187]">
-                      ${p.netRevenueCAD}
-                    </td>
-                    <td className="py-2.5 px-3 font-bold text-[#686e4a] dark:text-[#aab187]">
-                      +{p.roiPercent.toFixed(0)}%
-                    </td>
+                    <th className="py-2.5 px-3 font-mono font-bold">ID</th>
+                    <th className="py-2.5 px-4 font-bold">Partner Name</th>
+                    <th className="py-2.5 px-3 font-bold">Category</th>
+                    <th className="py-2.5 px-3 font-bold">Contact</th>
+                    <th className="py-2.5 px-2 font-bold text-center">Referred Patients</th>
+                    <th className="py-2.5 px-3 font-bold">Gross CAD</th>
+                    <th className="py-2.5 px-3 font-bold">Commission CAD</th>
+                    <th className="py-2.5 px-3 font-bold">Net Margin CAD</th>
+                    <th className="py-2.5 px-3 font-bold">ROI %</th>
+                    <th className="py-2.5 px-3 font-bold text-center">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-inherit font-mono">
+                  {partners.map((p) => (
+                    <tr
+                      key={p.id}
+                      className={`transition-colors ${
+                        isDarkMode
+                          ? 'hover:bg-[#202517] border-[#292e1e]'
+                          : 'hover:bg-[#f4f1eb] border-[#e7e3da]'
+                      }`}
+                    >
+                      <td className="py-2.5 px-3 opacity-60">{p.id}</td>
+                      <td className="py-2.5 px-4 font-sans font-semibold text-sm">
+                        <div className="flex items-center gap-1.5">
+                          <span>{p.name}</span>
+                          {p.status === 'Active' && (
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 font-sans text-xs">{p.category}</td>
+                      <td className="py-2.5 px-3 font-sans text-xs">
+                        <div>{p.contactPerson}</div>
+                        {p.email && <div className="text-[10px] opacity-60">{p.email}</div>}
+                      </td>
+                      <td className="py-2.5 px-2 text-center font-bold">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('customers');
+                            setCustomerPartnerFilter(p.id);
+                            setCustomerPage(1);
+                          }}
+                          className="px-2 py-0.5 rounded bg-[#686e4a]/15 text-[#52573a] dark:text-[#c7ccaa] hover:bg-[#686e4a]/30 transition-colors font-bold cursor-pointer"
+                          title="View all patients referred by this partner"
+                        >
+                          {p.referredCustomersCount} patients
+                        </button>
+                      </td>
+                      <td className="py-2.5 px-3 font-bold">${p.totalRevenueCAD}</td>
+                      <td className="py-2.5 px-3">${p.totalCommissionPaidCAD}</td>
+                      <td className="py-2.5 px-3 font-bold text-[#686e4a] dark:text-[#aab187]">
+                        ${p.netRevenueCAD}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-[#686e4a] dark:text-[#aab187]">
+                        +{p.roiPercent.toFixed(0)}%
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditPartner(p)}
+                            className="p-1.5 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-800 text-[#686e4a] dark:text-[#c7ccaa] transition-colors cursor-pointer"
+                            title="Edit Partner"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          {p.id !== 'p-8' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmationConfig({
+                                  isOpen: true,
+                                  title: `Delete Partner "${p.name}"?`,
+                                  description: `Are you sure you want to remove ${p.name}? Any patients currently linked will be converted to Direct / Organic.`,
+                                  details: [
+                                    `Partner ID: ${p.id}`,
+                                    `Category: ${p.category}`,
+                                    `Referred Patients: ${p.referredCustomersCount}`,
+                                  ],
+                                  action: async () => {
+                                    if (onDeletePartner) onDeletePartner(p.id);
+                                  },
+                                });
+                              }}
+                              className="p-1.5 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                              title="Delete Partner"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
         {/* Tab 3: Bookings Table View */}
         {activeTab === 'bookings' && (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr
@@ -834,13 +1506,13 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                   }`}
                 >
                   <th className="py-2.5 px-3 font-mono font-bold">ID</th>
-                  <th className="py-2.5 px-4 font-bold">Customer</th>
-                  <th className="py-2.5 px-3 font-bold">Partner Source</th>
+                  <th className="py-2.5 px-4 font-bold text-emerald-800 dark:text-emerald-300">Customer (Patient)</th>
+                  <th className="py-2.5 px-3 font-bold">Partner Source (Click to Edit)</th>
                   <th className="py-2.5 px-3 font-bold">Category</th>
                   <th className="py-2.5 px-3 font-bold">Date</th>
                   <th className="py-2.5 px-3 font-bold">Price CAD</th>
                   <th className="py-2.5 px-3 font-bold">Insurance Billed</th>
-                  <th className="py-2.5 px-3 font-bold">Patient Copay</th>
+                  <th className="py-2.5 px-3 font-bold text-emerald-800 dark:text-emerald-300">Patient Copay</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-inherit font-mono">
@@ -854,17 +1526,29 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                     }`}
                   >
                     <td className="py-2.5 px-3 opacity-60">{b.id}</td>
-                    <td className="py-2.5 px-4 font-sans font-semibold text-sm">
-                      {b.customerName}
+                    <td className="py-2.5 px-4 font-sans whitespace-nowrap">
+                      <span className="font-bold text-sm text-emerald-950 dark:text-emerald-100 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 px-2 py-0.5 rounded-md inline-block shadow-2xs">
+                        {b.customerName}
+                      </span>
                     </td>
-                    <td className="py-2.5 px-3 font-sans text-xs">{b.partnerName}</td>
+                    <td className="py-2.5 px-3 font-sans text-xs whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAssignBookingModal(b)}
+                        className="px-2 py-1 rounded-md text-xs font-semibold bg-neutral-100 dark:bg-neutral-800 hover:bg-[#686e4a]/20 flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-300 dark:border-neutral-700"
+                        title="Click to edit partner source for this appointment log"
+                      >
+                        <span>{b.partnerName || 'Direct / Organic'}</span>
+                        <Pencil className="w-2.5 h-2.5 opacity-60" />
+                      </button>
+                    </td>
                     <td className="py-2.5 px-3 font-sans text-xs">{b.serviceCategory}</td>
                     <td className="py-2.5 px-3 text-xs">{b.bookingDate}</td>
                     <td className="py-2.5 px-3 font-bold">${b.priceCAD}</td>
                     <td className="py-2.5 px-3 text-[#686e4a] dark:text-[#aab187]">
                       ${b.insuranceBilledCAD}
                     </td>
-                    <td className="py-2.5 px-3 text-[#b88c00] dark:text-[#e6b000]">
+                    <td className="py-2.5 px-3 font-bold text-emerald-700 dark:text-emerald-300">
                       ${b.patientPaidCAD}
                     </td>
                   </tr>
@@ -876,7 +1560,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
 
         {/* Tab 4: CAC Table View */}
         {activeTab === 'cac' && (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr
@@ -889,7 +1573,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                   <th className="py-2.5 px-3 font-mono font-bold">ID</th>
                   <th className="py-2.5 px-4 font-bold">Channel / Partner</th>
                   <th className="py-2.5 px-3 font-bold">Spend CAD</th>
-                  <th className="py-2.5 px-2 font-bold text-center">New Patients</th>
+                  <th className="py-2.5 px-2 font-bold text-center text-emerald-800 dark:text-emerald-300">New Patients</th>
                   <th className="py-2.5 px-3 font-bold">CAC CAD</th>
                   <th className="py-2.5 px-3 font-bold">Avg LTV CAD</th>
                   <th className="py-2.5 px-3 font-bold">LTV:CAC</th>
@@ -911,7 +1595,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                       {c.partnerOrChannel}
                     </td>
                     <td className="py-2.5 px-3 font-bold">${c.spendCAD}</td>
-                    <td className="py-2.5 px-2 text-center font-bold">
+                    <td className="py-2.5 px-2 text-center font-bold text-emerald-700 dark:text-emerald-300">
                       {c.newCustomersAcquired}
                     </td>
                     <td className="py-2.5 px-3 font-bold text-[#686e4a] dark:text-[#aab187]">
@@ -922,6 +1606,247 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                       {c.ltvCacRatio.toFixed(1)}x
                     </td>
                     <td className="py-2.5 px-3 text-xs">{c.paybackPeriodMonths} months</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Tab 5: Practitioners Table View */}
+        {activeTab === 'practitioners' && (
+          <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr
+                  className={`uppercase text-[10px] tracking-wider border-b ${
+                    isDarkMode
+                      ? 'bg-[#181b11] border-[#292e1e] text-[#8b927a]'
+                      : 'bg-[#f9f8f5] border-[#e7e3da] text-[#7d7663]'
+                  }`}
+                >
+                  <th className="py-2.5 px-3 font-mono font-bold">ID</th>
+                  <th className="py-2.5 px-4 font-bold">Practitioner Name</th>
+                  <th className="py-2.5 px-3 font-bold">Professional Title</th>
+                  <th className="py-2.5 px-3 font-bold">Clinical Specialty</th>
+                  <th className="py-2.5 px-3 font-bold">Contact Email</th>
+                  <th className="py-2.5 px-3 font-bold">Phone</th>
+                  <th className="py-2.5 px-3 font-bold">Services & Treatments</th>
+                  <th className="py-2.5 px-3 font-bold text-center">Status</th>
+                  <th className="py-2.5 px-3 font-bold text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-inherit">
+                {practitioners.map((p) => (
+                  <tr
+                    key={p.id}
+                    className={`transition-colors ${
+                      isDarkMode
+                        ? 'hover:bg-[#202517] border-[#292e1e]'
+                        : 'hover:bg-[#f4f1eb] border-[#e7e3da]'
+                    }`}
+                  >
+                    <td className="py-2.5 px-3 font-mono opacity-60">{p.id}</td>
+                    <td className="py-2.5 px-4 font-sans whitespace-nowrap">
+                      <div className="font-bold text-sm text-[#100e0a] dark:text-[#f9f8f5] flex items-center gap-2">
+                        <span className="w-7 h-7 rounded-full bg-[#686e4a]/15 text-[#52573a] dark:text-[#c7ccaa] font-bold flex items-center justify-center text-xs border border-[#686e4a]/30">
+                          {p.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                        </span>
+                        <span>{p.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 font-medium text-xs whitespace-nowrap">
+                      <span className="px-2 py-0.5 rounded-full bg-[#edf0e6] dark:bg-[#686e4a]/20 text-[#52573a] dark:text-[#c7ccaa] border border-[#bcc2a4]">
+                        {p.title}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 opacity-80 whitespace-nowrap">{p.discipline}</td>
+                    <td className="py-2.5 px-3 font-mono text-xs opacity-75">{p.email || '—'}</td>
+                    <td className="py-2.5 px-3 font-mono text-xs opacity-75">{p.phone || '—'}</td>
+                    <td className="py-2.5 px-3 text-xs">
+                      <div className="flex flex-wrap gap-1 max-w-xs">
+                        {p.servicesOffered.map((svc, sIdx) => (
+                          <span
+                            key={sIdx}
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700"
+                          >
+                            {svc}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300">
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditPractitioner(p)}
+                          className="p-1 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-800 text-[#686e4a] dark:text-[#c7ccaa] transition-colors cursor-pointer"
+                          title="Edit Practitioner Details"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmationConfig({
+                              isOpen: true,
+                              title: `Delete Practitioner "${p.name}"?`,
+                              description: `Are you sure you want to remove ${p.name} (${p.title}) from the clinical team?`,
+                              details: [
+                                `Practitioner ID: ${p.id}`,
+                                `Specialty: ${p.discipline}`,
+                                `Status: ${p.status}`,
+                              ],
+                              action: async () => {
+                                if (onDeletePractitioner) {
+                                  onDeletePractitioner(p.id);
+                                }
+                              },
+                            });
+                          }}
+                          className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                          title="Delete Practitioner"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Tab 6: Procedures Table View */}
+        {activeTab === 'procedures' && (
+          <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr
+                  className={`uppercase text-[10px] tracking-wider border-b ${
+                    isDarkMode
+                      ? 'bg-[#181b11] border-[#292e1e] text-[#8b927a]'
+                      : 'bg-[#f9f8f5] border-[#e7e3da] text-[#7d7663]'
+                  }`}
+                >
+                  <th className="py-2.5 px-3 font-mono font-bold">ID</th>
+                  <th className="py-2.5 px-4 font-bold">Procedure / Treatment</th>
+                  <th className="py-2.5 px-3 font-bold">Category</th>
+                  <th className="py-2.5 px-2 font-bold text-center">Duration</th>
+                  <th className="py-2.5 px-3 font-bold text-right">Fee CAD</th>
+                  <th className="py-2.5 px-3 font-bold text-center">Insurance</th>
+                  <th className="py-2.5 px-3 font-bold text-right">Direct Billed</th>
+                  <th className="py-2.5 px-3 font-bold text-right text-emerald-800 dark:text-emerald-300">Typical Copay</th>
+                  <th className="py-2.5 px-3 font-bold">Assigned Practitioners</th>
+                  <th className="py-2.5 px-3 font-bold text-center">Status</th>
+                  <th className="py-2.5 px-3 font-bold text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-inherit">
+                {procedures.map((proc) => (
+                  <tr
+                    key={proc.id}
+                    className={`transition-colors ${
+                      isDarkMode
+                        ? 'hover:bg-[#202517] border-[#292e1e]'
+                        : 'hover:bg-[#f4f1eb] border-[#e7e3da]'
+                    }`}
+                  >
+                    <td className="py-2.5 px-3 font-mono opacity-60">{proc.id}</td>
+                    <td className="py-2.5 px-4">
+                      <div className="font-bold text-sm text-[#100e0a] dark:text-[#f9f8f5]">
+                        {proc.name}
+                      </div>
+                      <div className="text-[11px] opacity-70 line-clamp-1 mt-0.5">
+                        {proc.description}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#edf0e6] dark:bg-[#686e4a]/20 text-[#52573a] dark:text-[#c7ccaa] border border-[#bcc2a4]">
+                        {proc.category}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-2 text-center font-mono">{proc.durationMinutes}m</td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-right">
+                      ${proc.priceCAD.toFixed(2)}
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          proc.insuranceCovered
+                            ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
+                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                        }`}
+                      >
+                        {proc.insuranceCovered ? 'Eligible' : 'Self-Pay'}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-right opacity-80">
+                      ${proc.typicalInsuranceBillingCAD.toFixed(2)}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-right text-emerald-700 dark:text-emerald-300">
+                      ${proc.typicalCopayCAD.toFixed(2)}
+                    </td>
+                    <td className="py-2.5 px-3 text-xs">
+                      <div className="flex flex-wrap gap-1 max-w-xs">
+                        {proc.assignedPractitioners.map((pr, prIdx) => (
+                          <span
+                            key={prIdx}
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
+                          >
+                            {pr}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300">
+                        {proc.status}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditProcedure(proc)}
+                          className="p-1 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-800 text-[#686e4a] dark:text-[#c7ccaa] transition-colors cursor-pointer"
+                          title="Edit Procedure / Treatment"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmationConfig({
+                              isOpen: true,
+                              title: `Delete Treatment "${proc.name}"?`,
+                              description: `Are you sure you want to remove ${proc.name} ($${proc.priceCAD} CAD) from the procedures catalog?`,
+                              details: [
+                                `Procedure ID: ${proc.id}`,
+                                `Category: ${proc.category}`,
+                                `Duration: ${proc.durationMinutes} mins`,
+                                `Standard Fee: $${proc.priceCAD} CAD`,
+                              ],
+                              action: async () => {
+                                if (onDeleteProcedure) {
+                                  onDeleteProcedure(proc.id);
+                                }
+                              },
+                            });
+                          }}
+                          className="p-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 transition-colors cursor-pointer"
+                          title="Delete Procedure"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1172,6 +2097,1107 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
         </div>
       )}
 
+      {/* Modal: Add New Practitioner */}
+      {isAddPractitionerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`rounded-2xl max-w-md w-full p-6 shadow-2xl border ${
+              isDarkMode
+                ? 'bg-[#1a1e13] border-[#292e1e] text-[#f9f8f5]'
+                : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+            }`}
+          >
+            <h3 className="font-serif text-xl font-bold mb-4">
+              Add Team Practitioner
+            </h3>
+            <form onSubmit={handleCreatePractitioner} className="space-y-3 text-xs">
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newPractName}
+                  onChange={(e) => setNewPractName(e.target.value)}
+                  placeholder="e.g. Dr. Jordan Hayes"
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">
+                  Professional Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newPractTitle}
+                  onChange={(e) => setNewPractTitle(e.target.value)}
+                  placeholder="e.g. Registered Massage Therapist, Registered Acupuncturist"
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">
+                  Clinical Specialty / Discipline
+                </label>
+                <input
+                  type="text"
+                  value={newPractDiscipline}
+                  onChange={(e) => setNewPractDiscipline(e.target.value)}
+                  placeholder="e.g. Massage Therapy, Acupuncture, Psychotherapy, Aesthetics"
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Email</label>
+                  <input
+                    type="email"
+                    value={newPractEmail}
+                    onChange={(e) => setNewPractEmail(e.target.value)}
+                    placeholder="practitioner@wellthera.ca"
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Phone</label>
+                  <input
+                    type="tel"
+                    value={newPractPhone}
+                    onChange={(e) => setNewPractPhone(e.target.value)}
+                    placeholder="(705) 555-0199"
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">
+                  Services Offered (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={newPractServices}
+                  onChange={(e) => setNewPractServices(e.target.value)}
+                  placeholder="e.g. Brazilian Lymphatic Drainage, 60 Min RMT, Prenatal"
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div
+                className={`mt-5 pt-3 border-t flex justify-end gap-2 ${
+                  isDarkMode ? 'border-[#24291c]' : 'border-[#e7e3da]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsAddPractitionerModalOpen(false)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#a2a992]'
+                      : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38]'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-bold rounded-lg shadow-sm"
+                >
+                  Add Practitioner
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add New Procedure / Treatment */}
+      {isAddProcedureModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`rounded-2xl max-w-md w-full p-6 shadow-2xl border ${
+              isDarkMode
+                ? 'bg-[#1a1e13] border-[#292e1e] text-[#f9f8f5]'
+                : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+            }`}
+          >
+            <h3 className="font-serif text-xl font-bold mb-4">
+              Add Treatment / Service
+            </h3>
+            <form onSubmit={handleCreateProcedure} className="space-y-3 text-xs">
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">
+                  Treatment / Procedure Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newProcName}
+                  onChange={(e) => setNewProcName(e.target.value)}
+                  placeholder="e.g. Deep Tissue Lymphatic Sculpt (75 Min)"
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Category</label>
+                  <select
+                    value={newProcCategory}
+                    onChange={(e) => setNewProcCategory(e.target.value)}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  >
+                    <option value="Registered Massage Therapy">Registered Massage Therapy</option>
+                    <option value="Brazilian Lymphatic Drainage">Brazilian Lymphatic Drainage</option>
+                    <option value="Acupuncture & TCM">Acupuncture & TCM</option>
+                    <option value="Medical Aesthetics">Medical Aesthetics</option>
+                    <option value="Psychotherapy">Psychotherapy</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Duration (Mins)</label>
+                  <input
+                    type="number"
+                    value={newProcDuration}
+                    onChange={(e) => setNewProcDuration(Number(e.target.value))}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Standard Fee (CAD)</label>
+                  <input
+                    type="number"
+                    value={newProcPrice}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setNewProcPrice(val);
+                      if (newProcInsurance) setNewProcBilling(val);
+                    }}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Direct Insurer CAD</label>
+                  <input
+                    type="number"
+                    value={newProcBilling}
+                    onChange={(e) => setNewProcBilling(Number(e.target.value))}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Patient Copay CAD</label>
+                  <input
+                    type="number"
+                    value={newProcCopay}
+                    onChange={(e) => setNewProcCopay(Number(e.target.value))}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">Insurance Coverage</label>
+                <div className="flex gap-4 items-center mt-1">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={newProcInsurance}
+                      onChange={() => setNewProcInsurance(true)}
+                    />
+                    <span>Direct-Billing Eligible</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={!newProcInsurance}
+                      onChange={() => {
+                        setNewProcInsurance(false);
+                        setNewProcBilling(0);
+                        setNewProcCopay(newProcPrice);
+                      }}
+                    />
+                    <span>Self-Pay / Non-Insured</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">Description</label>
+                <textarea
+                  rows={2}
+                  value={newProcDesc}
+                  onChange={(e) => setNewProcDesc(e.target.value)}
+                  placeholder="Clinical purpose and protocol details..."
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div
+                className={`mt-5 pt-3 border-t flex justify-end gap-2 ${
+                  isDarkMode ? 'border-[#24291c]' : 'border-[#e7e3da]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsAddProcedureModalOpen(false)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#a2a992]'
+                      : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38]'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-bold rounded-lg shadow-sm"
+                >
+                  Add Treatment Row
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Assign / Re-assign Partner to Customer */}
+      {assigningCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`rounded-2xl max-w-lg w-full p-6 shadow-2xl border ${
+              isDarkMode
+                ? 'bg-[#1a1e13] border-[#292e1e] text-[#f9f8f5]'
+                : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-inherit mb-4">
+              <div className="flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-[#686e4a] dark:text-[#c7ccaa]" />
+                <h3 className="font-serif text-lg font-bold">
+                  Assign Referral Partner
+                </h3>
+              </div>
+              <button
+                onClick={() => setAssigningCustomer(null)}
+                className="p-1 rounded-md opacity-60 hover:opacity-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div
+              className={`p-3 rounded-xl mb-4 border text-xs ${
+                isDarkMode
+                  ? 'bg-[#14160e] border-[#292e1e]'
+                  : 'bg-[#edf0e6] border-[#bcc2a4]'
+              }`}
+            >
+              <div className="font-bold text-sm text-[#100e0a] dark:text-[#f9f8f5]">
+                {assigningCustomer.name}
+              </div>
+              <div className="text-[11px] opacity-75 mt-0.5">
+                {assigningCustomer.email || assigningCustomer.phone || 'No contact on file'} •{' '}
+                {assigningCustomer.totalVisits} visits • ${assigningCustomer.totalSpendCAD} CAD lifetime spend
+              </div>
+              <div className="text-[11px] font-semibold text-[#686e4a] dark:text-[#c7ccaa] mt-1">
+                Current Partner:{' '}
+                <span className="font-bold">{assigningCustomer.partnerName || 'Direct / Organic'}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveCustomerPartner} className="space-y-4 text-xs">
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">
+                  Select Referral Partner *
+                </label>
+                <select
+                  value={assignPartnerId}
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    setAssignPartnerId(selectedId);
+                    if (selectedId === 'direct') {
+                      setAssignReferralCode('DIRECT');
+                    } else {
+                      const found = partners.find((p) => p.id === selectedId);
+                      setAssignReferralCode(
+                        found?.referralCode ||
+                          (found ? found.name.split(' ')[0].toUpperCase() + '-REF' : '')
+                      );
+                    }
+                  }}
+                  className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] font-medium ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                >
+                  <option value="direct">Direct / Organic (No Referral Partner)</option>
+                  <optgroup label="Active Referral Partners">
+                    {partners
+                      .filter((p) => p.id !== 'p-8')
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.category}) — {p.commissionType === 'Percentage' ? `${p.commissionValue}% rev` : `$${p.commissionValue} flat`}
+                        </option>
+                      ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              {assignPartnerId !== 'direct' && (
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">
+                    Referral Code / Campaign Identifier
+                  </label>
+                  <input
+                    type="text"
+                    value={assignReferralCode}
+                    onChange={(e) => setAssignReferralCode(e.target.value)}
+                    placeholder="e.g. CF-BARRIE, PT-SIMCOE"
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] uppercase font-mono ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                  <p className="text-[10px] opacity-60 mt-1">
+                    This code associates the patient with this partner across future appointments.
+                  </p>
+                </div>
+              )}
+
+              <div className="pt-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={assignUpdateBookings}
+                    onChange={(e) => setAssignUpdateBookings(e.target.checked)}
+                    className="w-4 h-4 rounded text-[#686e4a] focus:ring-[#686e4a]"
+                  />
+                  <span className="font-semibold">
+                    Also link and update all existing past bookings for {assigningCustomer.name} to this partner
+                  </span>
+                </label>
+                <p className="text-[10px] opacity-60 ml-6 mt-0.5">
+                  Recalculates partner revenue, commission totals, and ROI metrics immediately.
+                </p>
+              </div>
+
+              <div
+                className={`pt-4 border-t flex items-center justify-between gap-2 ${
+                  isDarkMode ? 'border-[#24291c]' : 'border-[#e7e3da]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAssignPartnerId('direct');
+                    setAssignReferralCode('DIRECT');
+                  }}
+                  className="text-xs text-amber-600 dark:text-amber-400 hover:underline font-semibold"
+                >
+                  Clear (Make Organic)
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAssigningCustomer(null)}
+                    className={`px-3.5 py-1.5 rounded-lg border text-xs font-semibold ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#a2a992]'
+                        : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38]'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-bold rounded-lg shadow-sm cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save & Link Partner</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Assign Partner to Booking */}
+      {assigningBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`rounded-2xl max-w-md w-full p-6 shadow-2xl border ${
+              isDarkMode
+                ? 'bg-[#1a1e13] border-[#292e1e] text-[#f9f8f5]'
+                : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-inherit mb-4">
+              <h3 className="font-serif text-lg font-bold">
+                Edit Booking Partner Source
+              </h3>
+              <button
+                onClick={() => setAssigningBooking(null)}
+                className="p-1 rounded-md opacity-60 hover:opacity-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div
+              className={`p-3 rounded-xl mb-4 border text-xs ${
+                isDarkMode
+                  ? 'bg-[#14160e] border-[#292e1e]'
+                  : 'bg-[#edf0e6] border-[#bcc2a4]'
+              }`}
+            >
+              <div className="font-bold text-sm">
+                {assigningBooking.customerName}
+              </div>
+              <div className="opacity-75 mt-0.5">
+                {assigningBooking.serviceCategory} • {assigningBooking.bookingDate} • ${assigningBooking.priceCAD} CAD
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveBookingPartner} className="space-y-4 text-xs">
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">
+                  Assigned Partner Referral
+                </label>
+                <select
+                  value={assignBookingPartnerId}
+                  onChange={(e) => setAssignBookingPartnerId(e.target.value)}
+                  className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] font-medium ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                >
+                  <option value="direct">Direct / Organic (No Partner)</option>
+                  {partners
+                    .filter((p) => p.id !== 'p-8')
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.category})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div
+                className={`pt-4 border-t flex justify-end gap-2 ${
+                  isDarkMode ? 'border-[#24291c]' : 'border-[#e7e3da]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setAssigningBooking(null)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#a2a992]'
+                      : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38]'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-bold rounded-lg shadow-sm cursor-pointer"
+                >
+                  Update Booking Partner
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Partner */}
+      {editingPartner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`rounded-2xl max-w-lg w-full p-6 shadow-2xl border ${
+              isDarkMode
+                ? 'bg-[#1a1e13] border-[#292e1e] text-[#f9f8f5]'
+                : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-inherit mb-4">
+              <h3 className="font-serif text-lg font-bold">
+                Edit Partner Organization
+              </h3>
+              <button
+                onClick={() => setEditingPartner(null)}
+                className="p-1 rounded-md opacity-60 hover:opacity-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditPartner} className="space-y-3 text-xs">
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">Partner Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingPartner.name}
+                  onChange={(e) => setEditingPartner({ ...editingPartner, name: e.target.value })}
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Category *</label>
+                  <select
+                    value={editingPartner.category}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, category: e.target.value as PartnerCategory })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  >
+                    <option value="Fitness & CrossFit">Fitness & CrossFit</option>
+                    <option value="Physiotherapy & Chiro">Physiotherapy & Chiro</option>
+                    <option value="OB-GYN, Doulas & Pelvic Health">OB-GYN, Doulas & Pelvic Health</option>
+                    <option value="MedSpa & Aesthetics">MedSpa & Aesthetics</option>
+                    <option value="Local Wellness Influencer">Local Wellness Influencer</option>
+                    <option value="Corporate Wellness">Corporate Wellness</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Status *</label>
+                  <select
+                    value={editingPartner.status}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, status: e.target.value as any })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Paused">Paused</option>
+                    <option value="Prospect">Prospect</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Contact Person</label>
+                  <input
+                    type="text"
+                    value={editingPartner.contactPerson}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, contactPerson: e.target.value })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Contact Email</label>
+                  <input
+                    type="email"
+                    value={editingPartner.email}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, email: e.target.value })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Commission Type</label>
+                  <select
+                    value={editingPartner.commissionType}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, commissionType: e.target.value as any })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  >
+                    <option value="Percentage">Percentage (%)</option>
+                    <option value="FlatPerBooking">Flat per Booking ($)</option>
+                    <option value="CoMarketingRetainer">Retainer Only</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Commission Value</label>
+                  <input
+                    type="number"
+                    value={editingPartner.commissionValue}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, commissionValue: Number(e.target.value) })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Monthly Retainer CAD</label>
+                  <input
+                    type="number"
+                    value={editingPartner.monthlyRetainerCAD}
+                    onChange={(e) => setEditingPartner({ ...editingPartner, monthlyRetainerCAD: Number(e.target.value) })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div
+                className={`pt-4 border-t flex justify-end gap-2 ${
+                  isDarkMode ? 'border-[#24291c]' : 'border-[#e7e3da]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setEditingPartner(null)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#a2a992]'
+                      : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38]'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-bold rounded-lg shadow-sm cursor-pointer"
+                >
+                  Save Partner Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Practitioner */}
+      {editingPractitioner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`rounded-2xl max-w-md w-full p-6 shadow-2xl border ${
+              isDarkMode
+                ? 'bg-[#1a1e13] border-[#292e1e] text-[#f9f8f5]'
+                : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-inherit mb-4">
+              <h3 className="font-serif text-lg font-bold">
+                Edit Practitioner Profile
+              </h3>
+              <button
+                onClick={() => setEditingPractitioner(null)}
+                className="p-1 rounded-md opacity-60 hover:opacity-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditPractitioner} className="space-y-3 text-xs">
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingPractitioner.name}
+                  onChange={(e) => setEditingPractitioner({ ...editingPractitioner, name: e.target.value })}
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Professional Title</label>
+                  <input
+                    type="text"
+                    value={editingPractitioner.title}
+                    onChange={(e) => setEditingPractitioner({ ...editingPractitioner, title: e.target.value })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Specialty / Discipline</label>
+                  <input
+                    type="text"
+                    value={editingPractitioner.discipline}
+                    onChange={(e) => setEditingPractitioner({ ...editingPractitioner, discipline: e.target.value })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Email</label>
+                  <input
+                    type="email"
+                    value={editingPractitioner.email}
+                    onChange={(e) => setEditingPractitioner({ ...editingPractitioner, email: e.target.value })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Phone</label>
+                  <input
+                    type="text"
+                    value={editingPractitioner.phone}
+                    onChange={(e) => setEditingPractitioner({ ...editingPractitioner, phone: e.target.value })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">
+                  Services Offered (comma separated)
+                </label>
+                <input
+                  type="text"
+                  value={editPractServices}
+                  onChange={(e) => setEditPractServices(e.target.value)}
+                  placeholder="e.g. Brazilian Lymphatic Drainage, Deep Tissue"
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">Status</label>
+                <select
+                  value={editingPractitioner.status}
+                  onChange={(e) => setEditingPractitioner({ ...editingPractitioner, status: e.target.value as any })}
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                >
+                  <option value="Active">Active</option>
+                  <option value="On Leave">On Leave</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div
+                className={`pt-4 border-t flex justify-end gap-2 ${
+                  isDarkMode ? 'border-[#24291c]' : 'border-[#e7e3da]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setEditingPractitioner(null)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#a2a992]'
+                      : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38]'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-bold rounded-lg shadow-sm cursor-pointer"
+                >
+                  Save Practitioner
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Procedure */}
+      {editingProcedure && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`rounded-2xl max-w-md w-full p-6 shadow-2xl border ${
+              isDarkMode
+                ? 'bg-[#1a1e13] border-[#292e1e] text-[#f9f8f5]'
+                : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-inherit mb-4">
+              <h3 className="font-serif text-lg font-bold">
+                Edit Procedure / Treatment
+              </h3>
+              <button
+                onClick={() => setEditingProcedure(null)}
+                className="p-1 rounded-md opacity-60 hover:opacity-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditProcedure} className="space-y-3 text-xs">
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">Procedure Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingProcedure.name}
+                  onChange={(e) => setEditingProcedure({ ...editingProcedure, name: e.target.value })}
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Category *</label>
+                  <select
+                    value={editingProcedure.category}
+                    onChange={(e) => setEditingProcedure({ ...editingProcedure, category: e.target.value as ServiceCategory })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  >
+                    <option value="Registered Massage Therapy">Registered Massage Therapy</option>
+                    <option value="Brazilian Lymphatic Drainage">Brazilian Lymphatic Drainage</option>
+                    <option value="Acupuncture">Acupuncture</option>
+                    <option value="Nurse-Led Injectables">Nurse-Led Injectables</option>
+                    <option value="Psychotherapy">Psychotherapy</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Duration (mins)</label>
+                  <input
+                    type="number"
+                    value={editingProcedure.durationMinutes}
+                    onChange={(e) => setEditingProcedure({ ...editingProcedure, durationMinutes: Number(e.target.value) })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Standard Fee CAD</label>
+                  <input
+                    type="number"
+                    value={editingProcedure.priceCAD}
+                    onChange={(e) => setEditingProcedure({ ...editingProcedure, priceCAD: Number(e.target.value) })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Direct Billed CAD</label>
+                  <input
+                    type="number"
+                    value={editingProcedure.typicalInsuranceBillingCAD}
+                    onChange={(e) => setEditingProcedure({ ...editingProcedure, typicalInsuranceBillingCAD: Number(e.target.value) })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Typical Copay CAD</label>
+                  <input
+                    type="number"
+                    value={editingProcedure.typicalCopayCAD}
+                    onChange={(e) => setEditingProcedure({ ...editingProcedure, typicalCopayCAD: Number(e.target.value) })}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="editInsuranceCovered"
+                  checked={editingProcedure.insuranceCovered}
+                  onChange={(e) => setEditingProcedure({ ...editingProcedure, insuranceCovered: e.target.checked })}
+                  className="rounded text-[#686e4a]"
+                />
+                <label htmlFor="editInsuranceCovered" className="font-semibold cursor-pointer">
+                  Eligible for Direct Insurance Billing (e.g. RMT, Acupuncture)
+                </label>
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">
+                  Assigned Practitioners (comma separated)
+                </label>
+                <input
+                  type="text"
+                  value={editProcPractitioners}
+                  onChange={(e) => setEditProcPractitioners(e.target.value)}
+                  placeholder="e.g. Jane Doe, RMT, John Smith"
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-75">Description</label>
+                <textarea
+                  rows={2}
+                  value={editingProcedure.description}
+                  onChange={(e) => setEditingProcedure({ ...editingProcedure, description: e.target.value })}
+                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div
+                className={`pt-4 border-t flex justify-end gap-2 ${
+                  isDarkMode ? 'border-[#24291c]' : 'border-[#e7e3da]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setEditingProcedure(null)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#a2a992]'
+                      : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38]'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-bold rounded-lg shadow-sm cursor-pointer"
+                >
+                  Save Treatment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Confirmation Dialog for Destructive / Mutating Operations */}
       <ConfirmationModal
         isOpen={confirmationConfig.isOpen}
@@ -1205,6 +3231,8 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
         partners={partners}
         bookings={bookings}
         cacChannels={cacChannels}
+        practitioners={practitioners}
+        procedures={procedures}
         accessToken={accessToken}
         onSignInGoogle={onOpenSignIn}
         onCreateViaOAuth={handleCreateSheetPrompt}

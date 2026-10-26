@@ -9,7 +9,7 @@ export type RfmSegment =
   | 'Can\'t Lose Them'
   | 'Hibernating';
 
-export type CustomerStatus = 'Active' | 'At Risk' | 'Churned' | 'VIP';
+export type CustomerStatus = 'Active' | 'At Risk' | 'Churned' | 'VIP' | 'Prospective';
 
 export interface Customer {
   id: string;
@@ -112,6 +112,31 @@ export interface SlicerFilters {
   searchQuery: string;
 }
 
+export interface Practitioner {
+  id: string;
+  name: string;
+  title: string;
+  discipline: string;
+  email: string;
+  phone: string;
+  status: 'Active' | 'On Leave' | 'Inactive';
+  servicesOffered: string[];
+}
+
+export interface ClinicProcedure {
+  id: string;
+  name: string;
+  category: ServiceCategory;
+  durationMinutes: number;
+  priceCAD: number;
+  insuranceCovered: boolean;
+  typicalInsuranceBillingCAD: number;
+  typicalCopayCAD: number;
+  assignedPractitioners: string[];
+  description: string;
+  status: 'Active' | 'Inactive';
+}
+
 export interface GoogleSheetSyncState {
   sheetId: string | null;
   sheetUrl: string | null;
@@ -121,3 +146,45 @@ export interface GoogleSheetSyncState {
   isSyncing: boolean;
   syncMessage: string | null;
 }
+
+export type OkrStatus = 'on_track' | 'at_risk' | 'behind' | 'achieved';
+
+export interface KeyResult {
+  id: string;
+  title: string;
+  metricType: 'currency' | 'number' | 'percentage' | 'ratio';
+  targetValue: number;
+  currentValue: number;
+  unit?: string;
+  status: OkrStatus;
+  notes?: string;
+}
+
+export type ObjectiveCategory =
+  | 'Revenue & Growth'
+  | 'Acquisition & CAC'
+  | 'Partnerships & Referrals'
+  | 'Clinical Excellence & Retention';
+
+export interface ClinicObjective {
+  id: string;
+  title: string;
+  description: string;
+  owner: string;
+  category: ObjectiveCategory;
+  keyResults: KeyResult[];
+}
+
+export interface QuarterlyOkrPlan {
+  id: string;
+  quarter: string; // e.g. "Q1 2026", "Q2 2026", "Q3 2026", "Q4 2026"
+  year: number;
+  revenueGoalCAD: number;
+  cacBenchmarkCAD: number;
+  ltvCacTargetRatio: number;
+  newPatientsTarget: number;
+  retentionTargetRate: number; // percentage (e.g. 70 for 70%)
+  partnerRevenueShareTarget: number; // percentage (e.g. 60 for 60%)
+  objectives: ClinicObjective[];
+}
+

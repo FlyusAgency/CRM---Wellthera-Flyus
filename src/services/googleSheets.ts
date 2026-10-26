@@ -1,10 +1,13 @@
-import { Customer, Partner, ServiceBooking, CacChannelSpend } from '../types';
+import { Customer, Partner, ServiceBooking, CacChannelSpend, Practitioner, ClinicProcedure } from '../types';
+import { initialPractitioners, initialProcedures } from '../data/initialData';
 
 export interface WelltheraDataPackage {
   customers: Customer[];
   partners: Partner[];
   bookings: ServiceBooking[];
   cacChannels: CacChannelSpend[];
+  practitioners?: Practitioner[];
+  procedures?: ClinicProcedure[];
 }
 
 export const DEFAULT_TARGET_DRIVE_FOLDER_ID = '1dPwBTrwTASN7gcuPFAoaPaY0y4SHvxMF';
@@ -15,7 +18,7 @@ export async function createWelltheraGoogleSheet(
   data: WelltheraDataPackage,
   folderId: string = DEFAULT_TARGET_DRIVE_FOLDER_ID
 ): Promise<{ spreadsheetId: string; spreadsheetUrl: string; folderMoved: boolean }> {
-  // 1. Create spreadsheet with 5 sheet tabs (Instructions + 4 data tabs)
+  // 1. Create spreadsheet with 7 sheet tabs (Instructions + 6 data tabs)
   const createPayload = {
     properties: {
       title: `Wellthera Integrated Health - Partner & Customer Tracking (${new Date().toLocaleDateString('en-CA')})`,
@@ -56,6 +59,20 @@ export async function createWelltheraGoogleSheet(
           title: 'CAC & Channel Costs',
           gridProperties: { frozenRowCount: 1 },
           tabColor: { red: 0.54, green: 0.57, blue: 0.39 }, // Light Olive
+        },
+      },
+      {
+        properties: {
+          title: 'Practitioners & Team',
+          gridProperties: { frozenRowCount: 1 },
+          tabColor: { red: 0.20, green: 0.26, blue: 0.35 }, // Slate Navy
+        },
+      },
+      {
+        properties: {
+          title: 'Procedures & Treatments',
+          gridProperties: { frozenRowCount: 1 },
+          tabColor: { red: 0.06, green: 0.46, blue: 0.43 }, // Teal
         },
       },
     ],
@@ -256,6 +273,68 @@ export async function syncDataToExistingSheet(
     c.paybackPeriodMonths,
   ]);
 
+  // Practitioners & Team Rows
+  const practitionerHeaders = [
+    'Practitioner ID',
+    'Full Name',
+    'Professional Title',
+    'Discipline / Specialty',
+    'Email',
+    'Phone',
+    'Status',
+    'Services Offered',
+  ];
+
+  const activePractitioners = data.practitioners && data.practitioners.length > 0
+    ? data.practitioners
+    : initialPractitioners;
+
+  const practitionerRows = activePractitioners.map((p) => [
+    p.id,
+    p.name,
+    p.title,
+    p.discipline,
+    p.email || '',
+    p.phone || '',
+    p.status || 'Active',
+    Array.isArray(p.servicesOffered) ? p.servicesOffered.join(', ') : (p.servicesOffered || ''),
+  ]);
+
+  // Procedures & Treatments Rows
+  const procedureHeaders = [
+    'Procedure ID',
+    'Procedure Name',
+    'Category',
+    'Duration (Min)',
+    'Standard Price (CAD)',
+    'Insurance Eligible',
+    'Avg Direct Billed (CAD)',
+    'Typical Copay (CAD)',
+    'Assigned Practitioners',
+    'Status',
+    'Clinical Description',
+  ];
+
+  const activeProcedures = data.procedures && data.procedures.length > 0
+    ? data.procedures
+    : initialProcedures;
+
+  const procedureRows = activeProcedures.map((proc) => [
+    proc.id,
+    proc.name,
+    proc.category,
+    proc.durationMinutes,
+    proc.priceCAD,
+    proc.insuranceCovered ? 'Yes' : 'No',
+    proc.typicalInsuranceBillingCAD || 0,
+    proc.typicalCopayCAD || 0,
+    Array.isArray(proc.assignedPractitioners)
+      ? proc.assignedPractitioners.join(', ')
+      : (proc.assignedPractitioners || ''),
+    proc.status || 'Active',
+    proc.description || '',
+  ]);
+
   // Instructions & Staff Operating Procedure (SOP) Tab Content
   const instructionRows = [
     ['WELLTHERA INTEGRATED HEALTH — CLINIC STAFF OPERATING MANUAL & SPREADSHEET GUIDE'],
@@ -269,6 +348,8 @@ export async function syncDataToExistingSheet(
     ['Customers & RFM', 'Reception / Front Desk', 'Whenever a new patient registers', 'Add Customer ID, Full Name, Phone, Email, Referral Code, and Insurance Provider.'],
     ['Partners & ROI', 'Manager / Director', 'When a new partner agreement starts', 'Enter Partner clinic details, commission %, and monthly retainers.'],
     ['CAC & Channel Costs', 'Manager / Marketing', 'Monthly at month-end review', 'Enter monthly ad spends (Google, Meta, Retainers) and new patients acquired.'],
+    ['Practitioners & Team', 'Clinic Manager / HR', 'When practitioner joins or updates hours', 'Manage licensed RMTs, Acupuncturist, Psychotherapist, Nurse Injector.'],
+    ['Procedures & Treatments', 'Clinic Director / Clinical Lead', 'When updating pricing or services', 'Define clinical catalog, treatment lengths, typical copays and insurers.'],
     [''],
     ['2. HOW TO LOG AN APPOINTMENT / FRONT DESK STEP-BY-STEP'],
     ['Step 1', 'Patient Check-in', 'Verify if patient is registered in "Customers & RFM". If brand new, add them first.'],
@@ -323,6 +404,14 @@ export async function syncDataToExistingSheet(
       {
         range: "'CAC & Channel Costs'!A1",
         values: [cacHeaders, ...cacRows],
+      },
+      {
+        range: "'Practitioners & Team'!A1",
+        values: [practitionerHeaders, ...practitionerRows],
+      },
+      {
+        range: "'Procedures & Treatments'!A1",
+        values: [procedureHeaders, ...procedureRows],
       },
     ],
   };
@@ -409,6 +498,8 @@ export async function fetchSheetDataViaAppsScript(webAppUrl: string): Promise<{
   partners?: Partner[];
   bookings?: ServiceBooking[];
   cacChannels?: CacChannelSpend[];
+  practitioners?: Practitioner[];
+  procedures?: ClinicProcedure[];
   timestamp?: string;
   message?: string;
 }> {
@@ -426,11 +517,17 @@ export async function fetchSheetDataViaAppsScript(webAppUrl: string): Promise<{
     }
 
     const resJson = await response.json();
-    if (resJson.status === 'success') {
+    if (resJson.status === 'success' || resJson.customers || resJson.partners) {
       const customers = resJson.customers || [];
       const partners = resJson.partners || [];
       const bookings = resJson.bookings || [];
       const cacChannels = resJson.cacChannels || [];
+      const practitioners = (resJson.practitioners && resJson.practitioners.length > 0)
+        ? resJson.practitioners
+        : initialPractitioners;
+      const procedures = (resJson.procedures && resJson.procedures.length > 0)
+        ? resJson.procedures
+        : initialProcedures;
 
       return {
         success: true,
@@ -438,8 +535,10 @@ export async function fetchSheetDataViaAppsScript(webAppUrl: string): Promise<{
         partners,
         bookings,
         cacChannels,
+        practitioners,
+        procedures,
         timestamp: resJson.timestamp,
-        message: `Synced ${customers.length} patients, ${partners.length} partners, and ${bookings.length} bookings from Google Sheet!`,
+        message: `Synced ${customers.length} patients, ${partners.length} partners, ${practitioners.length} practitioners, and ${bookings.length} bookings from Google Sheet!`,
       };
     }
     return {
@@ -512,41 +611,66 @@ export async function fetchSheetDataViaCsvExport(sheetId: string): Promise<{
   partners?: Partner[];
   bookings?: ServiceBooking[];
   cacChannels?: CacChannelSpend[];
+  practitioners?: Practitioner[];
+  procedures?: ClinicProcedure[];
   message?: string;
 }> {
   try {
-    const fetchTabCsv = async (tabName: string) => {
-      const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}&t=${Date.now()}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Could not access tab "${tabName}" (${res.status})`);
-      const text = await res.text();
-      return parseCsvText(text);
+    const fetchTabCsv = async (candidateNames: string[]): Promise<string[][]> => {
+      for (const tabName of candidateNames) {
+        try {
+          const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}&t=${Date.now()}`;
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const text = await res.text();
+          if (text.trim().toLowerCase().startsWith('<!doctype') || text.trim().toLowerCase().startsWith('<html')) {
+            throw new Error('Google Sheet is private. In Google Sheets, click "Share" > "General access" > set to "Anyone with the link can view".');
+          }
+          const parsed = parseCsvText(text);
+          if (parsed && parsed.length > 0) return parsed;
+        } catch (e: any) {
+          if (e.message && e.message.includes('Anyone with the link')) throw e;
+        }
+      }
+      return [];
     };
 
     // 1. Fetch Customers
-    const custRows = await fetchTabCsv('Customers & RFM');
+    const custRows = await fetchTabCsv(['Customers & RFM', 'Customers', 'Patients & RFM', 'Patients', 'Customer', 'Patient']);
     const customers: Customer[] = [];
     if (custRows.length > 1) {
       for (let i = 1; i < custRows.length; i++) {
         const row = custRows[i];
-        if (!row[1] || row[1] === '') continue;
+        let id = String(row[0] || '').trim();
+        let name = String(row[1] || '').trim();
+        let email = String(row[2] || '').trim();
+        let phone = String(row[3] || '').trim();
+        let partnerName = String(row[4] || '').trim();
+
+        // Handle case where user entered name in Column A without an ID
+        if ((!name || name.includes('@')) && id && !id.startsWith('c-') && !id.toLowerCase().startsWith('id')) {
+          name = id;
+          id = `c-${i}`;
+        }
+        if (!name || name === '' || name.toLowerCase() === 'name' || name.toLowerCase() === 'patient name') continue;
+
         const totalVisits = Number(row[8]) || 1;
         const totalSpendCAD = Number(row[9]?.replace(/[^0-9.-]+/g, '')) || 0;
-        const recencyDays = Number(row[13]) || 20;
+        const recencyDays = Number(row[13]) || 15;
 
         customers.push({
-          id: String(row[0] || `c-${i}`),
-          name: String(row[1] || '').trim(),
-          email: String(row[2] || '').trim(),
-          phone: String(row[3] || '').trim(),
+          id: id || `c-${i}`,
+          name,
+          email,
+          phone,
           partnerId: '',
-          partnerName: String(row[4] || '').trim(),
+          partnerName,
           referralCode: String(row[5] || '').trim(),
           firstVisitDate: String(row[6] || ''),
           lastVisitDate: String(row[7] || ''),
           totalVisits,
           totalSpendCAD,
-          preferredService: String(row[10] || 'Brazilian Lymphatic Drainage'),
+          preferredService: String(row[10] || 'Brazilian Lymphatic Drainage (60 Min)'),
           insuranceProvider: String(row[11] || 'None / Self-Pay'),
           status: (row[12] as any) || 'Active',
           recencyDays,
@@ -559,12 +683,20 @@ export async function fetchSheetDataViaCsvExport(sheetId: string): Promise<{
     }
 
     // 2. Fetch Partners
-    const partRows = await fetchTabCsv('Partners & ROI');
+    const partRows = await fetchTabCsv(['Partners & ROI', 'Partners', 'Referral Partners']);
     const partners: Partner[] = [];
     if (partRows.length > 1) {
       for (let i = 1; i < partRows.length; i++) {
         const row = partRows[i];
-        if (!row[1] || row[1] === '') continue;
+        let id = String(row[0] || '').trim();
+        let name = String(row[1] || '').trim();
+
+        if ((!name || name.includes('@')) && id && !id.startsWith('p-') && !id.toLowerCase().startsWith('id')) {
+          name = id;
+          id = `p-${i}`;
+        }
+        if (!name || name === '') continue;
+
         const commType = String(row[6] || 'Percentage');
         const commVal = Number(row[7]?.replace(/[^0-9.-]+/g, '')) || (commType === 'FlatPerBooking' ? 25 : 12);
         const retainer = Number(row[8]?.replace(/[^0-9.-]+/g, '')) || 0;
@@ -578,8 +710,8 @@ export async function fetchSheetDataViaCsvExport(sheetId: string): Promise<{
         const avgSpend = Number(row[16]?.replace(/[^0-9.-]+/g, '')) || (refCount > 0 ? totalRev / refCount : 500);
 
         partners.push({
-          id: String(row[0] || `p-${i}`),
-          name: String(row[1] || '').trim(),
+          id: id || `p-${i}`,
+          name,
           category: (row[2] as any) || 'Physiotherapy & Chiro',
           contactPerson: String(row[3] || ''),
           email: String(row[4] || ''),
@@ -601,7 +733,7 @@ export async function fetchSheetDataViaCsvExport(sheetId: string): Promise<{
     }
 
     // 3. Fetch Bookings
-    const bookRows = await fetchTabCsv('Services & Bookings Log');
+    const bookRows = await fetchTabCsv(['Services & Bookings Log', 'Bookings', 'Services', 'Appointments']);
     const bookings: ServiceBooking[] = [];
     if (bookRows.length > 1) {
       for (let i = 1; i < bookRows.length; i++) {
@@ -629,7 +761,7 @@ export async function fetchSheetDataViaCsvExport(sheetId: string): Promise<{
     // 4. Fetch CAC
     let cacChannels: CacChannelSpend[] = [];
     try {
-      const cacRows = await fetchTabCsv('CAC & Channel Costs');
+      const cacRows = await fetchTabCsv(['CAC & Channel Costs', 'CAC', 'Marketing Costs']);
       if (cacRows.length > 1) {
         for (let i = 1; i < cacRows.length; i++) {
           const row = cacRows[i];
@@ -654,13 +786,93 @@ export async function fetchSheetDataViaCsvExport(sheetId: string): Promise<{
       console.warn('CAC tab fetch note:', e);
     }
 
+    // 5. Fetch Practitioners
+    const practRows = await fetchTabCsv(['Practitioners & Team', 'Practitioners', 'Team']);
+    const practitioners: Practitioner[] = [];
+    if (practRows.length > 1) {
+      for (let i = 1; i < practRows.length; i++) {
+        const row = practRows[i];
+        let id = String(row[0] || '').trim();
+        let name = String(row[1] || '').trim();
+        if ((!name || name.includes('@')) && id && !id.startsWith('pr-')) {
+          name = id;
+          id = `pr-${i}`;
+        }
+        if (!name || name === '') continue;
+        const title = String(row[2] || 'Registered Massage Therapist').trim();
+        const discipline = String(row[3] || '').trim();
+        const email = String(row[4] || '').trim();
+        const phone = String(row[5] || '').trim();
+        const status = (row[6] as any) || 'Active';
+        const rawServices = String(row[7] || '').trim();
+        const servicesOffered = rawServices ? rawServices.split(',').map((s) => s.trim()).filter(Boolean) : [];
+
+        practitioners.push({
+          id: id || `pr-${i}`,
+          name,
+          title,
+          discipline,
+          email,
+          phone,
+          status,
+          servicesOffered,
+        });
+      }
+    }
+
+    // 6. Fetch Procedures
+    const procRows = await fetchTabCsv(['Procedures & Treatments', 'Procedures', 'Treatments']);
+    const procedures: ClinicProcedure[] = [];
+    if (procRows.length > 1) {
+      for (let i = 1; i < procRows.length; i++) {
+        const row = procRows[i];
+        let id = String(row[0] || '').trim();
+        let name = String(row[1] || '').trim();
+        if (!name && id && !id.startsWith('proc-')) {
+          name = id;
+          id = `proc-${i}`;
+        }
+        if (!name || name === '') continue;
+
+        const category = (row[2] as any) || 'Registered Massage Therapy';
+        const duration = Number(row[3]) || 60;
+        const price = Number(row[4]?.replace(/[^0-9.-]+/g, '')) || 150;
+        const insEligible = String(row[5] || 'Yes').toLowerCase().includes('y');
+        const insBilling = Number(row[6]?.replace(/[^0-9.-]+/g, '')) || 0;
+        const copay = Number(row[7]?.replace(/[^0-9.-]+/g, '')) || Math.max(0, price - insBilling);
+        const rawPracs = String(row[8] || '').trim();
+        const assignedPracs = rawPracs ? rawPracs.split(',').map((p) => p.trim()).filter(Boolean) : [];
+        const status = (row[9] as any) || 'Active';
+        const desc = String(row[10] || '').trim();
+
+        procedures.push({
+          id: id || `proc-${i}`,
+          name,
+          category,
+          durationMinutes: duration,
+          priceCAD: price,
+          insuranceCovered: insEligible,
+          typicalInsuranceBillingCAD: insBilling,
+          typicalCopayCAD: copay,
+          assignedPractitioners: assignedPracs,
+          status,
+          description: desc,
+        });
+      }
+    }
+
+    const finalPractitioners = practitioners.length > 0 ? practitioners : initialPractitioners;
+    const finalProcedures = procedures.length > 0 ? procedures : initialProcedures;
+
     return {
       success: true,
       customers,
       partners,
       bookings,
       cacChannels,
-      message: `Directly loaded ${customers.length} patients, ${partners.length} partners, and ${bookings.length} bookings from Google Sheets!`,
+      practitioners: finalPractitioners,
+      procedures: finalProcedures,
+      message: `Directly loaded ${customers.length} patients, ${partners.length} partners, ${finalPractitioners.length} practitioners, and ${bookings.length} bookings from Google Sheets!`,
     };
   } catch (err: any) {
     console.error('CSV Fetch Error:', err);
@@ -684,6 +896,8 @@ export async function pullLatestDataFromSpreadsheet(
   partners?: Partner[];
   bookings?: ServiceBooking[];
   cacChannels?: CacChannelSpend[];
+  practitioners?: Practitioner[];
+  procedures?: ClinicProcedure[];
   message: string;
   source: 'apps_script' | 'csv_gviz' | 'none';
 }> {
@@ -697,6 +911,8 @@ export async function pullLatestDataFromSpreadsheet(
         partners: res.partners,
         bookings: res.bookings,
         cacChannels: res.cacChannels,
+        practitioners: res.practitioners || initialPractitioners,
+        procedures: res.procedures || initialProcedures,
         message: res.message || 'Updated from Apps Script Webhook!',
         source: 'apps_script',
       };
@@ -707,14 +923,29 @@ export async function pullLatestDataFromSpreadsheet(
   const sheetId = syncState.sheetId || (syncState.sheetUrl ? parseSpreadsheetIdFromInput(syncState.sheetUrl) : null);
   if (sheetId) {
     const csvRes = await fetchSheetDataViaCsvExport(sheetId);
-    if (csvRes.success && (csvRes.customers?.length || csvRes.partners?.length || csvRes.bookings?.length)) {
+    if (
+      csvRes.success &&
+      (csvRes.customers?.length ||
+        csvRes.partners?.length ||
+        csvRes.bookings?.length ||
+        csvRes.practitioners?.length ||
+        csvRes.procedures?.length)
+    ) {
       return {
         success: true,
         customers: csvRes.customers,
         partners: csvRes.partners,
         bookings: csvRes.bookings,
         cacChannels: csvRes.cacChannels,
+        practitioners: csvRes.practitioners || initialPractitioners,
+        procedures: csvRes.procedures || initialProcedures,
         message: csvRes.message || 'Updated directly from Google Sheet tabs!',
+        source: 'csv_gviz',
+      };
+    } else if (csvRes.message) {
+      return {
+        success: false,
+        message: csvRes.message,
         source: 'csv_gviz',
       };
     }

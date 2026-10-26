@@ -351,7 +351,7 @@ export const RfmMatrixDashboard: React.FC<RfmMatrixDashboardProps> = ({
                     }`}
                   >
                     <td className="py-3 px-4">
-                      <div className="font-semibold text-sm">{cust.name}</div>
+                      <div className="font-bold text-sm text-[#100e0a] dark:text-[#f9f8f5]">{cust.name}</div>
                       <div
                         className={`text-[11px] ${
                           isDarkMode ? 'text-[#8b927a]' : 'text-[#7d7663]'

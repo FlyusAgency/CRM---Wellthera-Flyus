@@ -120,12 +120,12 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
           <div>
             <span
               className={`text-[11px] font-bold uppercase tracking-wider block font-sans ${
-                isDarkMode ? 'text-[#8b927a]' : 'text-[#7d7663]'
+                isDarkMode ? 'text-emerald-400' : 'text-emerald-800'
               }`}
             >
               Patient Copay / Self-Pay
             </span>
-            <div className="text-2xl font-bold font-serif text-[#b88c00] dark:text-[#e6b000] mt-1">
+            <div className="text-2xl font-bold font-serif text-emerald-600 dark:text-emerald-400 mt-1">
               ${totalPatientPaid.toLocaleString()} CAD
             </div>
             <span
@@ -133,14 +133,14 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
                 isDarkMode ? 'text-[#8b927a]' : 'text-[#7d7663]'
               }`}
             >
-              Cash & Credit Card Copay
+              Direct Patient Out-of-Pocket
             </span>
           </div>
           <div
             className={`p-3 rounded-xl border ${
               isDarkMode
-                ? 'bg-[#e6b000]/15 text-[#e6b000] border-[#e6b000]/30'
-                : 'bg-[#fff9e6] text-[#b88c00] border-[#f4d068]'
+                ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-300'
             }`}
           >
             <CreditCard className="w-5 h-5" />
@@ -280,8 +280,8 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
                         <span className="text-[#686e4a] dark:text-[#aab187] font-semibold">
                           Insured: {item.insuranceSharePct}%
                         </span>
-                        <span className="text-[#b88c00] dark:text-[#e6b000] font-semibold">
-                          Cash: {100 - Number(item.insuranceSharePct)}%
+                        <span className="text-emerald-700 dark:text-emerald-300 font-bold">
+                          Patient: {100 - Number(item.insuranceSharePct)}%
                         </span>
                       </div>
                       <div
@@ -296,7 +296,7 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
                           style={{ width: `${item.insuranceSharePct}%` }}
                         />
                         <div
-                          className="bg-[#e6b000] h-2 transition-all"
+                          className="bg-emerald-600 dark:bg-emerald-400 h-2 transition-all"
                           style={{ width: `${100 - Number(item.insuranceSharePct)}%` }}
                         />
                       </div>

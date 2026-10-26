@@ -20,13 +20,18 @@ import {
   Partner,
   ServiceCategory,
   GoogleSheetSyncState,
+  Practitioner,
+  ClinicProcedure,
 } from '../types';
 import { generateCsvDownload } from '../services/googleSheets';
+import { initialPractitioners, initialProcedures } from '../data/initialData';
 
 interface ManagerDailyLogViewProps {
   bookings: ServiceBooking[];
   customers: Customer[];
   partners: Partner[];
+  practitioners?: Practitioner[];
+  procedures?: ClinicProcedure[];
   onAddNewBooking: (booking: ServiceBooking) => void;
   onAddNewCustomer: (customer: Customer) => void;
   syncState: GoogleSheetSyncState;
@@ -38,6 +43,8 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
   bookings,
   customers,
   partners,
+  practitioners = initialPractitioners,
+  procedures = initialProcedures,
   onAddNewBooking,
   onAddNewCustomer,
   syncState,
@@ -52,8 +59,8 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
   const [serviceCategory, setServiceCategory] = useState<ServiceCategory>(
     'Brazilian Lymphatic Drainage'
   );
-  const [serviceTitle, setServiceTitle] = useState('Full Body Lymphatic Drainage');
-  const [therapist, setTherapist] = useState('Camila Santos, RMT');
+  const [serviceTitle, setServiceTitle] = useState('Brazilian Lymphatic Drainage (60 Min)');
+  const [therapist, setTherapist] = useState('Camila Dos Santos, RMT');
   const [bookingDate, setBookingDate] = useState(todayStr);
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [priceCAD, setPriceCAD] = useState(160);
@@ -72,15 +79,20 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
   // Derived Copay
   const calculatedPatientPaid = Math.max(0, priceCAD - insuranceBilledCAD);
 
-  // Clinician options
-  const cliniciansList = [
-    'Camila Santos, RMT',
-    'Lucas Silva, RMT',
-    'Dr. Jin Park, R.Ac',
-    'Nurse Sarah, RN',
-    'Dr. Rachel Vance, ND',
-    'Elena Rostova, RP',
-  ];
+  // Clinician options derived from practitioners list
+  const cliniciansList = useMemo(() => {
+    const list = practitioners && practitioners.length > 0 ? practitioners : initialPractitioners;
+    return list.map((p) => {
+      const suffix = p.title.includes('Massage')
+        ? 'RMT'
+        : p.title.includes('Acupuncturist')
+        ? 'R.Ac'
+        : p.title.includes('Psychotherapist')
+        ? 'RP'
+        : 'RN (Injector)';
+      return `${p.name}, ${suffix}`;
+    });
+  }, [practitioners]);
 
   // Service titles by category
   const serviceOptionsByCategory: Record<ServiceCategory, string[]> = {
@@ -289,17 +301,17 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
 
         <div
           className={`p-3.5 rounded-xl border space-y-1 transition-colors ${
-            isDarkMode ? 'bg-[#181b12] border-[#292e1e]' : 'bg-[#ffffff] border-[#e7e3da]'
+            isDarkMode ? 'bg-[#181b12] border-indigo-900/60' : 'bg-indigo-50/60 border-indigo-200'
           }`}
         >
-          <div className="flex items-center justify-between text-xs font-semibold opacity-75">
+          <div className="flex items-center justify-between text-xs font-bold text-indigo-700 dark:text-indigo-300">
             <span>Patient Copay</span>
-            <UserCheck className="w-4 h-4 text-[#686e4a]" />
+            <UserCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           </div>
-          <div className="text-xl sm:text-2xl font-serif font-bold text-[#332e1e] dark:text-[#f9f8f5]">
+          <div className="text-xl sm:text-2xl font-serif font-bold text-indigo-950 dark:text-indigo-100">
             ${totalPatientPaid.toLocaleString('en-CA', { minimumFractionDigits: 0 })}
           </div>
-          <span className="text-[10px] opacity-70 block font-medium">
+          <span className="text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold block">
             Direct at Clinic (Out-of-Pocket)
           </span>
         </div>
@@ -492,14 +504,14 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
 
             {/* Patient Copay (Calculated) */}
             <div className="space-y-1">
-              <label className="font-semibold block text-emerald-600 dark:text-emerald-400">
+              <label className="font-bold block text-indigo-700 dark:text-indigo-300">
                 Patient Copay CAD
               </label>
               <div
                 className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-bold ${
                   isDarkMode
-                    ? 'bg-[#14160e] border-[#292e1e] text-emerald-400'
-                    : 'bg-[#edf0e6] border-[#bcc2a4] text-[#332e1e]'
+                    ? 'bg-[#14160e] border-indigo-800 text-indigo-300'
+                    : 'bg-indigo-50 border-indigo-200 text-indigo-950'
                 }`}
               >
                 ${calculatedPatientPaid}
@@ -657,13 +669,13 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
             >
               <tr>
                 <th className="py-2.5 px-3">Date</th>
-                <th className="py-2.5 px-3">Patient</th>
+                <th className="py-2.5 px-3 font-bold text-emerald-800 dark:text-emerald-300">Patient</th>
                 <th className="py-2.5 px-3">Origin / Partner</th>
                 <th className="py-2.5 px-3">Procedure</th>
                 <th className="py-2.5 px-3">Therapist</th>
                 <th className="py-2.5 px-3 text-right">Total CAD</th>
                 <th className="py-2.5 px-3 text-right">Insurance CAD</th>
-                <th className="py-2.5 px-3 text-right">Patient Copay</th>
+                <th className="py-2.5 px-3 text-right font-bold text-emerald-800 dark:text-emerald-300">Patient Copay</th>
                 <th className="py-2.5 px-3 text-center">Status</th>
               </tr>
             </thead>
@@ -685,11 +697,13 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
                     <td className="py-2 px-3 font-mono text-[11px] opacity-80 whitespace-nowrap">
                       {b.bookingDate}
                     </td>
-                    <td className="py-2 px-3 font-bold text-[#332e1e] dark:text-[#f9f8f5] whitespace-nowrap">
-                      {b.customerName}
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <span className="font-bold text-emerald-950 dark:text-emerald-100 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 px-2 py-0.5 rounded-md inline-block shadow-2xs">
+                        {b.customerName}
+                      </span>
                     </td>
                     <td className="py-2 px-3 opacity-80 whitespace-nowrap">{b.partnerName}</td>
-                    <td className="py-2 px-3 whitespace-nowrap">{b.serviceTitle}</td>
+                    <td className="py-2 px-3 whitespace-nowrap font-medium">{b.serviceTitle}</td>
                     <td className="py-2 px-3 opacity-80 whitespace-nowrap">{b.therapist}</td>
                     <td className="py-2 px-3 font-mono font-bold text-right whitespace-nowrap">
                       ${b.priceCAD.toFixed(2)}
@@ -697,7 +711,7 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
                     <td className="py-2 px-3 font-mono text-right opacity-80 whitespace-nowrap">
                       ${b.insuranceBilledCAD.toFixed(2)}
                     </td>
-                    <td className="py-2 px-3 font-mono font-bold text-right text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                    <td className="py-2 px-3 font-mono font-bold text-right text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                       ${b.patientPaidCAD.toFixed(2)}
                     </td>
                     <td className="py-2 px-3 text-center whitespace-nowrap">

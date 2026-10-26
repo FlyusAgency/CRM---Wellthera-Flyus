@@ -6,6 +6,7 @@ import {
   Grid,
   Layers,
   Target,
+  Compass,
   FileSpreadsheet,
   ExternalLink,
   Sun,
@@ -16,7 +17,7 @@ import {
 import { GoogleSignInButton } from './GoogleSignInButton';
 import { WelltheraLogo } from './WelltheraLogo';
 
-export type ActiveTab = 'overview' | 'partners' | 'rfm' | 'services' | 'cac' | 'sheet';
+export type ActiveTab = 'overview' | 'partners' | 'rfm' | 'services' | 'cac' | 'okrs' | 'sheet';
 
 interface PowerBIHeaderProps {
   activeTab: ActiveTab;
@@ -226,6 +227,7 @@ export const PowerBIHeader: React.FC<PowerBIHeaderProps> = ({
         <nav className="flex items-center gap-1.5 min-w-max">
           {[
             { id: 'overview' as const, label: 'Executive Overview', icon: LayoutDashboard },
+            { id: 'okrs' as const, label: 'OKRs & Goals', icon: Compass },
             { id: 'partners' as const, label: 'Partner ROI Matrix', icon: Users },
             { id: 'rfm' as const, label: 'RFM Customer Matrix', icon: Grid },
             { id: 'services' as const, label: 'Services Breakdown', icon: Layers },

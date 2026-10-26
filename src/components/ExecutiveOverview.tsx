@@ -7,8 +7,9 @@ import {
   Award,
   ArrowRight,
   Sparkles,
+  Compass,
 } from 'lucide-react';
-import { Customer, Partner, ServiceBooking, CacChannelSpend } from '../types';
+import { Customer, Partner, ServiceBooking, CacChannelSpend, QuarterlyOkrPlan } from '../types';
 import { KpiCard } from './KpiCard';
 import { ActiveTab } from './PowerBIHeader';
 
@@ -17,6 +18,7 @@ interface ExecutiveOverviewProps {
   partners: Partner[];
   bookings: ServiceBooking[];
   cacChannels: CacChannelSpend[];
+  okrPlans?: QuarterlyOkrPlan[];
   onNavigateTab: (tab: ActiveTab) => void;
   isDarkMode?: boolean;
 }
@@ -26,6 +28,7 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
   partners,
   bookings,
   cacChannels,
+  okrPlans = [],
   onNavigateTab,
   isDarkMode = false,
 }) => {
@@ -49,17 +52,135 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
   const loyalCount = customers.filter((c) => c.rfmSegment === 'Loyal Customers').length;
   const atRiskCount = customers.filter((c) => c.rfmSegment === 'At Risk' || c.rfmSegment === "Can't Lose Them").length;
 
+  const [selectedQuarterId, setSelectedQuarterId] = React.useState<string>(
+    okrPlans[0]?.id || 'q1-2026'
+  );
+
+  // Sync selected quarter if okrPlans changes
+  React.useEffect(() => {
+    if (okrPlans.length > 0 && !okrPlans.some((p) => p.id === selectedQuarterId)) {
+      setSelectedQuarterId(okrPlans[0].id);
+    }
+  }, [okrPlans, selectedQuarterId]);
+
+  const activeOkrPlan =
+    okrPlans.find((p) => p.id === selectedQuarterId) || okrPlans[0];
+
+  // OKR Cross-referencing calculations
+  const okrRevGoal = activeOkrPlan?.revenueGoalCAD || 180000;
+  const revPct = Math.round((totalRevenue / Math.max(okrRevGoal, 1)) * 100);
+  const revVarianceCAD = totalRevenue - okrRevGoal;
+  const revVariancePct = Math.round((revVarianceCAD / Math.max(okrRevGoal, 1)) * 100);
+
+  const okrCacBenchmark = activeOkrPlan?.cacBenchmarkCAD || 40.0;
+  const isCacUnderCap = blendedCac <= okrCacBenchmark;
+  const cacVariancePct =
+    okrCacBenchmark > 0
+      ? Math.round(((blendedCac - okrCacBenchmark) / okrCacBenchmark) * 100)
+      : 0;
+
+  const okrLtvTarget = activeOkrPlan?.ltvCacTargetRatio || 7.0;
+  const isLtvTargetMet = ltvCacRatio >= okrLtvTarget;
+  const ltvVariancePct =
+    okrLtvTarget > 0
+      ? Math.round(((ltvCacRatio - okrLtvTarget) / okrLtvTarget) * 100)
+      : 0;
+
+  const partnerSharePct = totalRevenue > 0 ? (partnerGross / totalRevenue) * 100 : 0;
+  const okrPartnerShareTarget = activeOkrPlan?.partnerRevenueShareTarget || 65;
+  const isPartnerShareMet = partnerSharePct >= okrPartnerShareTarget;
+  const partnerShareVariancePts = Math.round(partnerSharePct - okrPartnerShareTarget);
+
   return (
     <div className="space-y-6">
-      {/* Power BI Primary DAX KPI Cards Row */}
+      {/* Quarterly OKR & Benchmark Status Milestone Banner with Quarter Switcher */}
+      {activeOkrPlan && (
+        <div
+          className={`p-3.5 sm:p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors ${
+            isDarkMode
+              ? 'bg-[#181b11] border-[#292e1e] text-[#f9f8f5]'
+              : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e] shadow-xs'
+          }`}
+        >
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-[#686e4a]/15 text-[#686e4a] dark:text-[#c7ccaa] shrink-0">
+              <Compass className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold text-sm text-[#100e0a] dark:text-[#f9f8f5]">
+                  {activeOkrPlan.quarter} OKR Targets:
+                </span>
+
+                {/* Quarter Switcher Pills */}
+                {okrPlans.length > 1 && (
+                  <div className="inline-flex items-center rounded-lg border p-0.5 text-xs">
+                    {okrPlans.map((plan) => (
+                      <button
+                        key={plan.id}
+                        onClick={() => setSelectedQuarterId(plan.id)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
+                          activeOkrPlan.id === plan.id
+                            ? 'bg-[#686e4a] text-white shadow-xs'
+                            : isDarkMode
+                            ? 'text-[#a2a992] hover:text-white'
+                            : 'text-[#6e6856] hover:text-[#100e0a]'
+                        }`}
+                      >
+                        {plan.quarter}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#686e4a]/15 text-[#52573a] dark:text-[#c7ccaa] border border-[#686e4a]/30">
+                  Revenue Goal: ${okrRevGoal.toLocaleString()} CAD ({revPct}% Achieved)
+                </span>
+                <span
+                  className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                    isCacUnderCap
+                      ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/30'
+                      : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30'
+                  }`}
+                >
+                  CAC Benchmark: &le; ${okrCacBenchmark.toFixed(2)} CAD {isCacUnderCap ? '(Compliant)' : '(Review)'}
+                </span>
+              </div>
+              <p
+                className={`text-xs mt-1 ${
+                  isDarkMode ? 'text-[#8b927a]' : 'text-[#6e6856]'
+                }`}
+              >
+                Pacing against <strong>{activeOkrPlan.quarter}</strong> OKR plan: <strong>${totalRevenue.toLocaleString()} CAD</strong> actual revenue logged ({revPct}% of goal) • Blended CAC is <strong>${blendedCac.toFixed(2)} CAD</strong>.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => onNavigateTab('okrs')}
+              className="px-3.5 py-1.5 rounded-lg bg-[#686e4a] hover:bg-[#52573a] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+            >
+              <span>Manage Team OKRs</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Power BI Primary DAX KPI Cards Row - Dynamic OKR Cross-Referenced */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Total Clinic Revenue"
           value={`$${totalRevenue.toLocaleString()} CAD`}
-          subValue="Past 12 Mo"
-          changePercent={18.5}
-          changeLabel="vs target"
-          targetInfo="Goal: $50,000 CAD"
+          subValue={`${revPct}% of ${activeOkrPlan ? activeOkrPlan.quarter : 'Q1'} Goal`}
+          changePercent={revVariancePct}
+          changeLabel={revVariancePct >= 0 ? 'ahead of OKR goal' : 'vs OKR goal'}
+          targetInfo={
+            activeOkrPlan
+              ? `OKR Goal: $${okrRevGoal.toLocaleString()} CAD`
+              : 'Goal: $180,000 CAD'
+          }
           color="olive"
           isDarkMode={isDarkMode}
           icon={<DollarSign className="w-4 h-4" />}
@@ -68,10 +189,14 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
         <KpiCard
           title="Partner Referral ROI"
           value={`+${partnerRoi.toFixed(0)}%`}
-          subValue={`$${netPartnerRev.toLocaleString()} Net`}
-          changePercent={24.2}
-          changeLabel="high profitability"
-          targetInfo="7 Active Partners"
+          subValue={`$${netPartnerRev.toLocaleString()} Net (${partnerSharePct.toFixed(0)}% share)`}
+          changePercent={partnerShareVariancePts}
+          changeLabel={isPartnerShareMet ? 'exceeds OKR share' : 'pts vs OKR share'}
+          targetInfo={
+            activeOkrPlan
+              ? `OKR Share: \u2265 ${okrPartnerShareTarget}%`
+              : 'Target: \u2265 65%'
+          }
           color="gold"
           isDarkMode={isDarkMode}
           icon={<Award className="w-4 h-4" />}
@@ -80,10 +205,15 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
         <KpiCard
           title="Blended CAC"
           value={`$${blendedCac.toFixed(2)} CAD`}
-          subValue="Partner CAC: $37.50"
-          changePercent={-14.8}
-          changeLabel="CAC reduced"
-          targetInfo="Benchmark: $100"
+          subValue={`Benchmark: $${okrCacBenchmark.toFixed(2)} CAD`}
+          changePercent={cacVariancePct}
+          changeLabel={isCacUnderCap ? 'Under OKR cap (efficient)' : 'Above OKR cap'}
+          targetInfo={
+            activeOkrPlan
+              ? `OKR Cap: \u2264 $${okrCacBenchmark.toFixed(2)} CAD`
+              : 'Benchmark: $40.00'
+          }
+          invertTrendColor={true}
           color="olive"
           isDarkMode={isDarkMode}
           icon={<Target className="w-4 h-4" />}
@@ -92,10 +222,14 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
         <KpiCard
           title="LTV : CAC Multiplier"
           value={`${ltvCacRatio.toFixed(1)}x`}
-          subValue={`Avg LTV: $${avgLtv.toFixed(0)}`}
-          changePercent={12.0}
-          changeLabel="World-class unit econ"
-          targetInfo="Target: >4.0x"
+          subValue={`Avg LTV: $${avgLtv.toFixed(0)} CAD`}
+          changePercent={ltvVariancePct}
+          changeLabel={isLtvTargetMet ? 'Exceeds OKR target' : 'vs OKR target'}
+          targetInfo={
+            activeOkrPlan
+              ? `OKR Target: \u2265 ${okrLtvTarget.toFixed(1)}x`
+              : 'Target: >7.0x'
+          }
           color="gold"
           isDarkMode={isDarkMode}
           icon={<TrendingUp className="w-4 h-4" />}

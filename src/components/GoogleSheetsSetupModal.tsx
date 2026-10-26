@@ -20,6 +20,8 @@ import {
   ServiceBooking,
   CacChannelSpend,
   GoogleSheetSyncState,
+  Practitioner,
+  ClinicProcedure,
 } from '../types';
 import {
   DEFAULT_TARGET_DRIVE_FOLDER_ID,
@@ -29,6 +31,7 @@ import {
   downloadCompleteJsonPackage,
 } from '../services/googleSheets';
 import { generateWelltheraAppsScript } from '../services/welltheraAppsScriptCode';
+import { initialPractitioners, initialProcedures } from '../data/initialData';
 
 interface GoogleSheetsSetupModalProps {
   isOpen: boolean;
@@ -44,6 +47,8 @@ interface GoogleSheetsSetupModalProps {
   partners: Partner[];
   bookings: ServiceBooking[];
   cacChannels: CacChannelSpend[];
+  practitioners?: Practitioner[];
+  procedures?: ClinicProcedure[];
   accessToken: string | null;
   onSignInGoogle: () => void;
   onCreateViaOAuth: () => void;
@@ -59,6 +64,8 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
   partners,
   bookings,
   cacChannels,
+  practitioners = initialPractitioners,
+  procedures = initialProcedures,
   accessToken,
   onSignInGoogle,
   onCreateViaOAuth,
@@ -75,7 +82,9 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
     customers,
     partners,
     bookings,
-    cacChannels
+    cacChannels,
+    practitioners,
+    procedures
   );
 
   const handleCopyScript = () => {
@@ -124,6 +133,16 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
     const cacHeaders = ['Channel / Partner', 'Month Period', 'Spend (CAD)', 'New Customers Acquired', 'Calculated CAC (CAD)', 'Average LTV (CAD)', 'LTV:CAC Ratio', 'Payback Visits', 'Payback Period (Months)'];
     const cacRows = cacChannels.map((c) => [c.partnerOrChannel, c.month, c.spendCAD, c.newCustomersAcquired, c.calculatedCacCAD, c.averageLtvCAD, `${c.ltvCacRatio}x`, c.paybackPeriodVisits, c.paybackPeriodMonths]);
     generateCsvDownload('4_wellthera_cac_spend', cacHeaders, cacRows);
+
+    // 5. Practitioners & Clinical Team
+    const pracHeaders = ['Practitioner ID', 'Full Name', 'Professional Title', 'Discipline / Specialty', 'Email', 'Phone', 'Status', 'Services Offered'];
+    const pracRows = practitioners.map((p) => [p.id, p.name, p.title, p.discipline, p.email, p.phone, p.status, Array.isArray(p.servicesOffered) ? p.servicesOffered.join(', ') : p.servicesOffered]);
+    generateCsvDownload('5_wellthera_practitioners_team', pracHeaders, pracRows);
+
+    // 6. Procedures & Treatments
+    const procHeaders = ['Procedure ID', 'Procedure Name', 'Category', 'Duration (Min)', 'Standard Price (CAD)', 'Insurance Eligible', 'Avg Direct Billed (CAD)', 'Typical Copay (CAD)', 'Assigned Practitioners', 'Status', 'Clinical Description'];
+    const procRows = procedures.map((proc) => [proc.id, proc.name, proc.category, proc.durationMinutes, proc.priceCAD, proc.insuranceCovered ? 'Yes' : 'No', proc.typicalInsuranceBillingCAD, proc.typicalCopayCAD, Array.isArray(proc.assignedPractitioners) ? proc.assignedPractitioners.join(', ') : proc.assignedPractitioners, proc.status, proc.description]);
+    generateCsvDownload('6_wellthera_procedures_treatments', procHeaders, procRows);
   };
 
   return (

@@ -6,7 +6,8 @@
  * Version 3.0: Includes interactive "🛎️ FRONT DESK DASHBOARD" as the primary 1st tab!
  */
 
-import { Customer, Partner, ServiceBooking, CacChannelSpend } from '../types';
+import { Customer, Partner, ServiceBooking, CacChannelSpend, Practitioner, ClinicProcedure } from '../types';
+import { initialPractitioners, initialProcedures } from '../data/initialData';
 import {
   DEFAULT_TARGET_DRIVE_FOLDER_ID,
   DEFAULT_TARGET_DRIVE_FOLDER_URL,
@@ -16,17 +17,21 @@ export function generateWelltheraAppsScript(
   customers: Customer[],
   partners: Partner[],
   bookings: ServiceBooking[],
-  cacChannels: CacChannelSpend[]
+  cacChannels: CacChannelSpend[],
+  practitioners: Practitioner[] = initialPractitioners,
+  procedures: ClinicProcedure[] = initialProcedures
 ): string {
   const customersJson = JSON.stringify(customers, null, 2);
   const partnersJson = JSON.stringify(partners, null, 2);
   const bookingsJson = JSON.stringify(bookings, null, 2);
   const cacChannelsJson = JSON.stringify(cacChannels, null, 2);
+  const practitionersJson = JSON.stringify(practitioners, null, 2);
+  const proceduresJson = JSON.stringify(procedures, null, 2);
 
   return `/**
  * =========================================================================
  * WELLTHERA INTEGRATED HEALTH — GOOGLE SHEETS SETUP & AUTOMATION
- * Version: 3.0 — WITH INTERACTIVE FRONT DESK DASHBOARD (FAST CHECK-IN)
+ * Version: 4.0 — WITH PRACTITIONERS, PROCEDURES & FRONT DESK RECEPTION
  *
  * Target Google Drive Folder:
  * ${DEFAULT_TARGET_DRIVE_FOLDER_URL}
@@ -45,7 +50,9 @@ export function generateWelltheraAppsScript(
  * - 📅 Services & Bookings Log (Detailed Appointment Logs and Copays)
  * - 🤝 Partners & ROI (Referral Partners, Clinics, Gyms, and Commissions)
  * - 💰 CAC & Channel Costs (Acquisition Costs and Marketing Metrics)
- * - 📋 INSTRUCTIONS & STAFF GUIDE (Clinic Operating Manual & SOP)
+ * - 👩‍⚕️ Practitioners & Team (Registered Massage Therapists, Acupuncturist, Psychotherapist, Nurse Injector)
+ * - 📋 Procedures & Treatments (Clinic Clinical Catalog, Fees, Durations, and Billing Rates)
+ * - 📖 INSTRUCTIONS & STAFF GUIDE (Clinic Operating Manual & SOP)
  * =========================================================================
  */
 
@@ -58,6 +65,10 @@ const INITIAL_BOOKINGS = ${bookingsJson};
 
 const INITIAL_CAC_CHANNELS = ${cacChannelsJson};
 
+const INITIAL_PRACTITIONERS = ${practitionersJson};
+
+const INITIAL_PROCEDURES = ${proceduresJson};
+
 /**
  * Creates interactive menu in Google Sheets top bar upon opening
  */
@@ -66,6 +77,10 @@ function onOpen() {
   ui.createMenu('🏥 Wellthera Clinic')
     .addItem('✅ Log Front Desk Visit (1-Click)', 'logVisitFromFrontDesk')
     .addItem('🧹 Clear Front Desk Form', 'clearFrontDeskForm')
+    .addSeparator()
+    .addItem('➕ Add New Practitioner', 'addNewPractitionerPrompt')
+    .addItem('➕ Add New Service / Treatment', 'addNewProcedurePrompt')
+    .addItem('🔄 Refresh Dropdowns from Tabs', 'refreshAllDropdownRules')
     .addSeparator()
     .addItem('🚀 Rebuild / Refresh All Tabs', 'buildWelltheraCompleteSpreadsheet')
     .addItem('🔄 Recalculate Metrics & Totals', 'recalculateAllMetrics')
@@ -110,7 +125,16 @@ function buildWelltheraCompleteSpreadsheet() {
   // 5. Marketing Costs & CAC
   setupCacSheet(ss);
 
-  // 6. Clinic Operating Manual & Rules
+  // 6. Practitioners & Clinical Team
+  setupPractitionersSheet(ss);
+
+  // 7. Clinical Procedures & Treatments
+  setupProceduresSheet(ss);
+
+  // 8. Refresh dynamic dropdown rules from practitioners and treatments tabs
+  refreshAllDropdownRules();
+
+  // 9. Clinic Operating Manual & Rules
   setupInstructionsSheet(ss);
   
   // Remove default sheet (Sheet1) if empty
@@ -222,9 +246,9 @@ function setupFrontDeskDashboard(ss) {
   // Current Appointment Form (Columns B & C)
   const formLabels = [
     ['Appointment Date:', '=TODAY()', 'yyyy-mm-dd'],
-    ['Selected Service:', 'Brazilian Lymphatic Drainage', 'text'],
-    ['Practitioner / Therapist:', 'Camila Santos, RMT', 'text'],
-    ['Total Service Price (CAD):', '=IF(C7="Brazilian Lymphatic Drainage", 160, IF(C7="Registered Massage Therapy", 150, IF(C7="Acupuncture", 140, IF(C7="Nurse-Led Injectables", 350, 160))))', '$#,##0.00'],
+    ['Selected Service:', 'Brazilian Lymphatic Drainage (60 Min)', 'text'],
+    ['Practitioner / Therapist:', 'Camila Dos Santos, RMT', 'text'],
+    ['Total Service Price (CAD):', '=IF(ISBLANK(C7), 0, IFERROR(VLOOKUP(C7, \\'Procedures & Treatments\\'!B2:E50, 4, FALSE), 160))', '$#,##0.00'],
     ['Direct Insurance Billed (CAD):', 120, '$#,##0.00'],
     ['Patient Copay (CAD):', '=MAX(0, C9-C10)', '$#,##0.00'],
     ['Referral Partner / Source:', 'Barrie CrossFit Apex', 'text'],
@@ -253,21 +277,29 @@ function setupFrontDeskDashboard(ss) {
   // Dropdown Validations
   const serviceRule = SpreadsheetApp.newDataValidation()
     .requireValueInList([
-      'Brazilian Lymphatic Drainage',
-      'Registered Massage Therapy',
-      'Acupuncture',
-      'Nurse-Led Injectables',
-      'Psychotherapy'
+      'Brazilian Lymphatic Drainage (60 Min)',
+      'Brazilian Lymphatic Drainage (Extended - 90 Min)',
+      'Registered Massage Therapy (60 Min)',
+      'Registered Massage Therapy (90 Min)',
+      'Acupuncture & Traditional Chinese Medicine (60 Min)',
+      'Cosmetic Facial Acupuncture & Gua Sha (75 Min)',
+      'Psychotherapy & Somatic Mental Health (50 Min)',
+      'Nurse-Led Aesthetic Consultation & Neurotoxins (Botox / Dysport - 45 Min)',
+      'Advanced Dermal Filler & Skin Booster Therapy (60 Min)',
+      'Prenatal & Postnatal Specialized Massage (60 Min)'
     ], true).build();
   sheet.getRange('C7').setDataValidation(serviceRule);
 
   const therapistRule = SpreadsheetApp.newDataValidation()
     .requireValueInList([
-      'Camila Santos, RMT',
-      'Lucas Silva, RMT',
-      'Dr. Jin Park, R.Ac',
-      'Nurse Sarah, RN',
-      'Dr. Rachel Vance, ND'
+      'Camila Dos Santos, RMT',
+      'Kiana Forder, R.Ac',
+      'Yuki Hamada, RMT',
+      'Rachel Wallace, RMT',
+      'Liz Cerato, RMT',
+      'Thaisa Sakima, RMT',
+      'Giovanna Faedo, RP',
+      'Elise K. Papa, RN (Injector)'
     ], true).build();
   sheet.getRange('C8').setDataValidation(therapistRule);
 
@@ -741,6 +773,196 @@ function setupInstructionsSheet(ss) {
   sheet.autoResizeColumns(1, 4);
 }
 
+function setupPractitionersSheet(ss) {
+  let sheet = ss.getSheetByName('Practitioners & Team') || ss.getSheetByName('Practitioners');
+  if (!sheet) {
+    sheet = ss.insertSheet('Practitioners & Team', 5);
+  } else {
+    sheet.clear();
+  }
+
+  sheet.setTabColor('#334155');
+  sheet.setFrozenRows(1);
+
+  const headers = [
+    'Practitioner ID', 'Full Name', 'Professional Title', 'Discipline / Specialty',
+    'Email', 'Phone', 'Status', 'Services Offered'
+  ];
+
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers])
+    .setBackground('#1e293b')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold');
+
+  const rows = INITIAL_PRACTITIONERS.map(p => [
+    p.id,
+    p.name,
+    p.title,
+    p.discipline,
+    p.email || '',
+    p.phone || '',
+    p.status || 'Active',
+    Array.isArray(p.servicesOffered) ? p.servicesOffered.join(', ') : (p.servicesOffered || '')
+  ]);
+
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  }
+
+  const statusRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Active', 'On Leave', 'Inactive'], true).build();
+  sheet.getRange('G2:G50').setDataValidation(statusRule);
+
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function setupProceduresSheet(ss) {
+  let sheet = ss.getSheetByName('Procedures & Treatments') || ss.getSheetByName('Procedures');
+  if (!sheet) {
+    sheet = ss.insertSheet('Procedures & Treatments', 6);
+  } else {
+    sheet.clear();
+  }
+
+  sheet.setTabColor('#0f766e');
+  sheet.setFrozenRows(1);
+
+  const headers = [
+    'Procedure ID', 'Procedure Name', 'Category', 'Duration (Min)', 'Standard Price (CAD)',
+    'Insurance Eligible', 'Avg Direct Billed (CAD)', 'Typical Copay (CAD)',
+    'Assigned Practitioners', 'Status', 'Clinical Description'
+  ];
+
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers])
+    .setBackground('#0f766e')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold');
+
+  const rows = INITIAL_PROCEDURES.map(proc => [
+    proc.id,
+    proc.name,
+    proc.category,
+    proc.durationMinutes,
+    proc.priceCAD,
+    proc.insuranceCovered ? 'Yes' : 'No',
+    proc.typicalInsuranceBillingCAD || 0,
+    proc.typicalCopayCAD || 0,
+    Array.isArray(proc.assignedPractitioners) ? proc.assignedPractitioners.join(', ') : (proc.assignedPractitioners || ''),
+    proc.status || 'Active',
+    proc.description || ''
+  ]);
+
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+    sheet.getRange(2, 5, rows.length, 1).setNumberFormat('$#,##0.00');
+    sheet.getRange(2, 7, rows.length, 2).setNumberFormat('$#,##0.00');
+  }
+
+  const insRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Yes', 'No'], true).build();
+  sheet.getRange('F2:F50').setDataValidation(insRule);
+
+  const procStatusRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Active', 'Inactive'], true).build();
+  sheet.getRange('J2:J50').setDataValidation(procStatusRule);
+
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function addNewPractitionerPrompt() {
+  const ui = SpreadsheetApp.getUi();
+  const nameResp = ui.prompt('Add Practitioner', 'Enter Full Name of Practitioner:', ui.ButtonSet.OK_CANCEL);
+  if (nameResp.getSelectedButton() !== ui.Button.OK) return;
+  const name = nameResp.getResponseText().trim();
+  if (!name) return;
+
+  const titleResp = ui.prompt('Add Practitioner', 'Enter Professional Title (e.g., Registered Massage Therapist, Registered Acupuncturist, Registered Nurse):', ui.ButtonSet.OK_CANCEL);
+  const title = titleResp.getSelectedButton() === ui.Button.OK ? titleResp.getResponseText().trim() : 'Registered Massage Therapist';
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Practitioners & Team') || ss.getSheetByName('Practitioners');
+  if (!sheet) {
+    sheet = ss.insertSheet('Practitioners & Team');
+  }
+  const nextId = 'pr-' + sheet.getLastRow();
+  sheet.appendRow([nextId, name, title || 'Registered Massage Therapist', title || 'Clinical', '', '', 'Active', 'All Treatments']);
+  refreshAllDropdownRules();
+  ss.toast('Practitioner "' + name + '" added and front desk dropdowns refreshed!', 'Success ✅');
+}
+
+function addNewProcedurePrompt() {
+  const ui = SpreadsheetApp.getUi();
+  const nameResp = ui.prompt('Add Service / Treatment', 'Enter Treatment Name (e.g., Hot Stone Massage, Deep Tissue 90 Min):', ui.ButtonSet.OK_CANCEL);
+  if (nameResp.getSelectedButton() !== ui.Button.OK) return;
+  const name = nameResp.getResponseText().trim();
+  if (!name) return;
+
+  const priceResp = ui.prompt('Add Service / Treatment', 'Enter Standard Fee in CAD (e.g., 160):', ui.ButtonSet.OK_CANCEL);
+  const price = priceResp.getSelectedButton() === ui.Button.OK ? (Number(priceResp.getResponseText().replace(/[^0-9.-]/g, '')) || 150) : 150;
+
+  const durationResp = ui.prompt('Add Service / Treatment', 'Enter Duration in minutes (e.g., 60, 90):', ui.ButtonSet.OK_CANCEL);
+  const duration = durationResp.getSelectedButton() === ui.Button.OK ? (Number(durationResp.getResponseText().replace(/[^0-9]/g, '')) || 60) : 60;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Procedures & Treatments') || ss.getSheetByName('Procedures');
+  if (!sheet) {
+    sheet = ss.insertSheet('Procedures & Treatments');
+  }
+  const nextId = 'proc-' + sheet.getLastRow();
+  sheet.appendRow([nextId, name, 'Massage Therapy', duration, price, 'Yes', price, 0, 'All Active Practitioners', 'Active', 'Clinical treatment']);
+  refreshAllDropdownRules();
+  ss.toast('Service "' + name + '" added and front desk dropdowns refreshed!', 'Success ✅');
+}
+
+function refreshAllDropdownRules() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const frontDesk = ss.getSheetByName('🛎️ FRONT DESK DASHBOARD');
+  if (!frontDesk) return;
+
+  const practSheet = ss.getSheetByName('Practitioners & Team') || ss.getSheetByName('Practitioners');
+  const procSheet = ss.getSheetByName('Procedures & Treatments') || ss.getSheetByName('Procedures');
+
+  const practitionersList = [];
+  if (practSheet && practSheet.getLastRow() > 1) {
+    const data = practSheet.getRange(2, 2, practSheet.getLastRow() - 1, 6).getValues();
+    for (let i = 0; i < data.length; i++) {
+      const name = String(data[i][0] || '').trim();
+      const status = String(data[i][5] || 'Active').trim();
+      if (name && status !== 'Inactive' && status !== 'Deleted') {
+        practitionersList.push(name);
+      }
+    }
+  }
+
+  const proceduresList = [];
+  if (procSheet && procSheet.getLastRow() > 1) {
+    const data = procSheet.getRange(2, 2, procSheet.getLastRow() - 1, 9).getValues();
+    for (let i = 0; i < data.length; i++) {
+      const name = String(data[i][0] || '').trim();
+      const status = String(data[i][8] || 'Active').trim();
+      if (name && status !== 'Inactive' && status !== 'Deleted') {
+        proceduresList.push(name);
+      }
+    }
+  }
+
+  if (proceduresList.length > 0) {
+    const serviceRule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(proceduresList, true)
+      .setAllowInvalid(true)
+      .build();
+    frontDesk.getRange('C7').setDataValidation(serviceRule);
+  }
+
+  if (practitionersList.length > 0) {
+    const therapistRule = SpreadsheetApp.newDataValidation()
+      .requireValueInList(practitionersList, true)
+      .setAllowInvalid(true)
+      .build();
+    frontDesk.getRange('C8').setDataValidation(therapistRule);
+  }
+}
+
 function recalculateAllMetrics() {
   SpreadsheetApp.getActiveSpreadsheet().toast('All metrics recalculated successfully!', 'Updated ✅');
 }
@@ -761,24 +983,14 @@ function showStaffGuideAlert() {
 function doGet(e) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    
-    // Check if client requests export of all datasets for Dashboard sync
-    const action = e && e.parameter && e.parameter.action;
-    if (action === 'getData' || action === 'sync' || action === 'fetch') {
-      return ContentService.createTextOutput(JSON.stringify(exportDashboardData(ss)))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-
-    return ContentService.createTextOutput(JSON.stringify({
-      status: 'success',
-      timestamp: new Date().toISOString(),
-      spreadsheetName: ss.getName(),
-      sheetsCount: ss.getSheets().length,
-      message: 'Wellthera Google Apps Script Webhook Active and Operational!'
-    })).setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
+    const data = exportDashboardData(ss);
+    return ContentService.createTextOutput(JSON.stringify(data))
       .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      status: 'error', 
+      message: err.toString() 
+    })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
@@ -790,7 +1002,7 @@ function doPost(e) {
     // 1. Action: Add Booking
     if (payload.action === 'addBooking' && payload.booking) {
       const b = payload.booking;
-      const sheet = ss.getSheetByName('Services & Bookings Log');
+      const sheet = ss.getSheetByName('Services & Bookings Log') || ss.getSheetByName('Bookings');
       if (sheet) {
         sheet.appendRow([
           b.id, b.bookingDate, b.customerName, b.partnerName, b.serviceCategory,
@@ -802,7 +1014,7 @@ function doPost(e) {
 
     // 2. Action: Full Sync Data from Dashboard
     if (payload.action === 'fullSync' && payload.data) {
-      // Data sent by dashboard acknowledged and handled
+      // Synchronized data acknowledged
     }
 
     // 3. Action: Query latest datasets to update Vercel Dashboard
@@ -828,30 +1040,44 @@ function doPost(e) {
  * Exports spreadsheet records as clean JSON for consumption by the Vercel Dashboard
  */
 function exportDashboardData(ss) {
-  const custSheet = ss.getSheetByName('Customers & RFM');
-  const bookSheet = ss.getSheetByName('Services & Bookings Log');
-  const partSheet = ss.getSheetByName('Partners & ROI');
-  const cacSheet = ss.getSheetByName('CAC & Channel Costs');
+  const custSheet = ss.getSheetByName('Customers & RFM') || ss.getSheetByName('Customers') || ss.getSheetByName('Patients & RFM') || ss.getSheetByName('Patients');
+  const bookSheet = ss.getSheetByName('Services & Bookings Log') || ss.getSheetByName('Bookings') || ss.getSheetByName('Services') || ss.getSheetByName('Appointments');
+  const partSheet = ss.getSheetByName('Partners & ROI') || ss.getSheetByName('Partners') || ss.getSheetByName('Referral Partners');
+  const cacSheet = ss.getSheetByName('CAC & Channel Costs') || ss.getSheetByName('CAC') || ss.getSheetByName('Marketing Costs');
+  const practSheet = ss.getSheetByName('Practitioners & Team') || ss.getSheetByName('Practitioners') || ss.getSheetByName('Team');
+  const procSheet = ss.getSheetByName('Procedures & Treatments') || ss.getSheetByName('Procedures') || ss.getSheetByName('Treatments');
   
   const customers = [];
   if (custSheet && custSheet.getLastRow() > 1) {
     const data = custSheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
-      if (!row[1] || String(row[1]).trim() === '') continue;
+      let id = String(row[0] || '').trim();
+      let name = String(row[1] || '').trim();
+      let email = String(row[2] || '').trim();
+      let phone = String(row[3] || '').trim();
+      let partnerName = String(row[4] || '').trim();
+
+      // If user typed name in column A and didn't provide an ID:
+      if ((!name || name.includes('@')) && id && !id.startsWith('c-') && !id.toLowerCase().startsWith('id')) {
+        name = id;
+        id = 'c-' + (i < 10 ? '0' : '') + i;
+      }
+      if (!name) continue;
+
       customers.push({
-        id: String(row[0] || 'c-' + i),
-        name: String(row[1] || '').trim(),
-        email: String(row[2] || '').trim(),
-        phone: String(row[3] || '').trim(),
+        id: id || 'c-' + i,
+        name: name,
+        email: email,
+        phone: phone,
         partnerId: '',
-        partnerName: String(row[4] || '').trim(),
+        partnerName: partnerName,
         referralCode: String(row[5] || '').trim(),
         firstVisitDate: String(row[6] || ''),
         lastVisitDate: String(row[7] || ''),
         totalVisits: Number(row[8]) || 1,
         totalSpendCAD: Number(row[9]) || 0,
-        preferredService: String(row[10] || 'Brazilian Lymphatic Drainage'),
+        preferredService: String(row[10] || 'Brazilian Lymphatic Drainage (60 Min)'),
         insuranceProvider: String(row[11] || 'None / Self-Pay'),
         status: String(row[12] || 'Active'),
         recencyDays: Number(row[13]) || 15,
@@ -868,7 +1094,15 @@ function exportDashboardData(ss) {
     const data = partSheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
-      if (!row[1] || String(row[1]).trim() === '') continue;
+      let id = String(row[0] || '').trim();
+      let name = String(row[1] || '').trim();
+
+      // Flexible check if name is in column A
+      if ((!name || name.includes('@')) && id && !id.startsWith('p-') && !id.toLowerCase().startsWith('id')) {
+        name = id;
+        id = 'p-' + (i < 10 ? '0' : '') + i;
+      }
+      if (!name) continue;
 
       const commType = String(row[6] || 'Percentage');
       const commVal = Number(row[7]) || (commType === 'FlatPerBooking' ? 25 : 12);
@@ -893,8 +1127,8 @@ function exportDashboardData(ss) {
       const avgSpend = Number(row[16]) || (refCount > 0 ? totalRev / refCount : 500);
 
       partners.push({
-        id: String(row[0] || 'p-' + i),
-        name: String(row[1] || '').trim(),
+        id: id || 'p-' + i,
+        name: name,
         category: String(row[2] || 'Physiotherapy & Chiro'),
         contactPerson: String(row[3] || ''),
         email: String(row[4] || ''),
@@ -963,6 +1197,77 @@ function exportDashboardData(ss) {
     }
   }
 
+  const practitioners = [];
+  if (practSheet && practSheet.getLastRow() > 1) {
+    const data = practSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      let id = String(row[0] || '').trim();
+      let name = String(row[1] || '').trim();
+      if ((!name || name.includes('@')) && id && !id.startsWith('pr-')) {
+        name = id;
+        id = 'pr-' + i;
+      }
+      if (!name) continue;
+      const title = String(row[2] || 'Registered Massage Therapist').trim();
+      const discipline = String(row[3] || '').trim();
+      const email = String(row[4] || '').trim();
+      const phone = String(row[5] || '').trim();
+      const status = String(row[6] || 'Active').trim();
+      const rawServices = String(row[7] || '').trim();
+      const servicesOffered = rawServices ? rawServices.split(',').map(s => s.trim()).filter(Boolean) : [];
+      practitioners.push({
+        id: id || 'pr-' + i,
+        name: name,
+        title: title,
+        discipline: discipline,
+        email: email,
+        phone: phone,
+        status: status,
+        servicesOffered: servicesOffered
+      });
+    }
+  }
+
+  const procedures = [];
+  if (procSheet && procSheet.getLastRow() > 1) {
+    const data = procSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      let id = String(row[0] || '').trim();
+      let name = String(row[1] || '').trim();
+      if (!name && id && !id.startsWith('proc-')) {
+        name = id;
+        id = 'proc-' + i;
+      }
+      if (!name) continue;
+      const category = String(row[2] || 'Registered Massage Therapy').trim();
+      const duration = Number(row[3]) || 60;
+      const price = Number(row[4]) || 150;
+      const insEligible = String(row[5] || 'Yes').toLowerCase().includes('y');
+      const insBilling = Number(row[6]) || 0;
+      const copay = Number(row[7]) || Math.max(0, price - insBilling);
+      const rawPracs = String(row[8] || '').trim();
+      const assignedPracs = rawPracs ? rawPracs.split(',').map(p => p.trim()).filter(Boolean) : [];
+      const status = String(row[9] || 'Active').trim();
+      const desc = String(row[10] || '').trim();
+
+      procedures.push({
+        id: id || 'proc-' + i,
+        name: name,
+        category: category,
+        durationMinutes: duration,
+        priceCAD: price,
+        insuranceCovered: insEligible,
+        typicalInsuranceBillingCAD: insBilling,
+        typicalCopayCAD: copay,
+        assignedPractitioners: assignedPracs,
+        status: status,
+        description: desc
+      });
+    }
+  }
+
   return {
     status: 'success',
     timestamp: new Date().toISOString(),
@@ -970,10 +1275,14 @@ function exportDashboardData(ss) {
     partnersCount: partners.length,
     bookingsCount: bookings.length,
     cacChannelsCount: cacChannels.length,
+    practitionersCount: practitioners.length,
+    proceduresCount: procedures.length,
     customers: customers,
     partners: partners,
     bookings: bookings,
-    cacChannels: cacChannels
+    cacChannels: cacChannels,
+    practitioners: practitioners,
+    procedures: procedures
   };
 }
 `;

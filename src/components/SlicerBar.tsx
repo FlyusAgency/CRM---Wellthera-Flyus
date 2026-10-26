@@ -40,6 +40,19 @@ export const SlicerBar: React.FC<SlicerBarProps> = ({
   const [partnerDropdownOpen, setPartnerDropdownOpen] = React.useState(false);
   const [serviceDropdownOpen, setServiceDropdownOpen] = React.useState(false);
   const [rfmDropdownOpen, setRfmDropdownOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setPartnerDropdownOpen(false);
+        setServiceDropdownOpen(false);
+        setRfmDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const togglePartner = (id: string) => {
     if (filters.selectedPartners.includes(id)) {
@@ -93,6 +106,7 @@ export const SlicerBar: React.FC<SlicerBarProps> = ({
 
   return (
     <div
+      ref={containerRef}
       className={`border-b transition-colors ${
         isDarkMode
           ? 'bg-[#181b12] border-[#292e1e] text-[#f9f8f5]'

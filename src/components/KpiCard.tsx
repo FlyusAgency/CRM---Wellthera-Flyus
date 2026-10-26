@@ -10,6 +10,7 @@ interface KpiCardProps {
   targetInfo?: string;
   color?: 'olive' | 'gold' | 'ink' | 'rose' | 'amber';
   icon?: React.ReactNode;
+  invertTrendColor?: boolean;
   isDarkMode?: boolean;
 }
 
@@ -22,6 +23,7 @@ export const KpiCard: React.FC<KpiCardProps> = ({
   targetInfo,
   color = 'olive',
   icon,
+  invertTrendColor = false,
   isDarkMode = false,
 }) => {
   const colorMap = {
@@ -128,12 +130,24 @@ export const KpiCard: React.FC<KpiCardProps> = ({
         {changePercent !== undefined ? (
           <div className="flex items-center gap-1 font-sans">
             {changePercent > 0 ? (
-              <span className="flex items-center text-[#557738] dark:text-[#83ab5d] font-bold gap-0.5">
+              <span
+                className={`flex items-center font-bold gap-0.5 ${
+                  invertTrendColor
+                    ? 'text-[#b84a36] dark:text-[#e8816f]'
+                    : 'text-[#557738] dark:text-[#83ab5d]'
+                }`}
+              >
                 <TrendingUp className="w-3 h-3" />
                 +{changePercent}%
               </span>
             ) : changePercent < 0 ? (
-              <span className="flex items-center text-[#b84a36] dark:text-[#e8816f] font-bold gap-0.5">
+              <span
+                className={`flex items-center font-bold gap-0.5 ${
+                  invertTrendColor
+                    ? 'text-[#557738] dark:text-[#83ab5d]'
+                    : 'text-[#b84a36] dark:text-[#e8816f]'
+                }`}
+              >
                 <TrendingDown className="w-3 h-3" />
                 {changePercent}%
               </span>
