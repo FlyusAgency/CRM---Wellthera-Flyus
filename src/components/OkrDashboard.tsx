@@ -119,7 +119,7 @@ export const OkrDashboard: React.FC<OkrDashboardProps> = ({
   const actualLtvCac = actualBlendedCac > 0 ? avgLtv / actualBlendedCac : 6.8;
 
   const partnerOnlyGross = partners
-    .filter((p) => p.id !== 'p-8')
+    .filter((p) => p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct')
     .reduce((sum, p) => sum + p.totalRevenueCAD, 0);
   const actualPartnerShare =
     totalActualRevenue > 0 ? (partnerOnlyGross / totalActualRevenue) * 100 : 64.2;

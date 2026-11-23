@@ -123,7 +123,7 @@ export const SetupInstructionsModal: React.FC<SetupInstructionsModalProps> = ({
           }`}
         >
           {[
-            { id: 'staff' as const, label: 'Manual da Equipe (Staff SOP)', icon: ClipboardCheck },
+            { id: 'staff' as const, label: 'Staff Manual (SOP)', icon: ClipboardCheck },
             { id: 'drive' as const, label: 'Google Drive & Sheets', icon: FileSpreadsheet },
             { id: 'vercel' as const, label: 'Deploy to Vercel & Domain', icon: Globe },
             { id: 'github' as const, label: 'GitHub Repository Deployment', icon: Github },
@@ -187,7 +187,7 @@ export const SetupInstructionsModal: React.FC<SetupInstructionsModalProps> = ({
                   <button
                     onClick={() =>
                       copyToClipboard(
-                        `*FRONT DESK OPERATING MANUAL - WELLTHERA*\n\n1. DAILY DATA ENTRY:\n- Every completed checkout: Add to "Services & Bookings Log" (Date, Patient, Service Category, CAD Price, Insurance vs Out-of-Pocket split).\n- Brand NEW patient: Register in "Customers & RFM" (Name, Phone, Email, Referral Partner Code, Insurance Provider).\n\n2. REFERRAL PARTNER CODES (Ask at check-in: "Who referred you?"): \n- CFIT-APEX (Barrie CrossFit Apex - 15%)\n- LAKE-PHYS (Lakeview Physiotherapy - 12%)\n- INNIS-PELV (Innisfil Pelvic Health - $25 flat)\n- BARRIE-CHIR (Barrie Central Chiro - 10%)\n- DIRECT (Direct/website without referral)\n\n3. ACCEPTED INSURANCE:\n- Sun Life | Manulife | Canada Life | Green Shield Canada | Blue Cross | None / Self-Pay\n\n4. GOLDEN RULES:\n- Use YYYY-MM-DD date format (e.g. 2026-10-08)\n- Enter numbers without dollar signs (e.g. 150 instead of $150)\n- NEVER delete existing rows or alter calculated formula columns (R-Score, F-Score, M-Score, Segment).`,
+                        `*FRONT DESK OPERATING MANUAL - WELLTHERA*\n\n1. DAILY DATA ENTRY:\n- Every completed checkout: Add to "Services & Bookings Log" (Date, Patient, Service Category, CAD Price, Insurance vs Out-of-Pocket split).\n- Brand NEW patient: Register in "Customers & RFM" (Name, Phone, Email, Acquisition Channel / Partner Code, Insurance Provider).\n\n2. ACQUISITION CHANNELS & PARTNER CODES (Ask at check-in: "How did you hear about Wellthera?"): \n- DIRECT (No partner / Walk-in)\n- META (Instagram / Facebook)\n- GOOGLE (Google Search / Business Profile)\n- CLIENT-REF (Existing Wellthera Client)\n- PARTNER (Wellthera Partners)\n- Plus any custom referral partner added in the Partners & ROI tab\n\n3. ACCEPTED INSURANCE:\n- Sun Life | Manulife | Canada Life | Green Shield Canada | Blue Cross | None / Self-Pay\n\n4. GOLDEN RULES:\n- Use YYYY-MM-DD date format (e.g. 2026-11-22)\n- Enter numbers without dollar signs (e.g. 150 instead of $150)\n- NEVER delete existing rows or alter calculated formula columns (R-Score, F-Score, M-Score, Segment).`,
                         'staff-cheat-sheet'
                       )
                     }
@@ -340,7 +340,7 @@ export const SetupInstructionsModal: React.FC<SetupInstructionsModalProps> = ({
                     </div>
                     <div className="p-2 rounded bg-black/5 dark:bg-white/5 flex items-start gap-2">
                       <span className="font-mono font-bold text-[#e6b000] shrink-0">Referral Code:</span>
-                      <span className="opacity-80">Partner referral code (e.g. <code className="font-mono">CFIT-APEX</code>). If direct, enter <code className="font-mono">DIRECT</code>.</span>
+                      <span className="opacity-80">Channel or partner code (e.g. <code className="font-mono">GOOGLE</code>, <code className="font-mono">META</code>). If no partner, enter <code className="font-mono">DIRECT</code>.</span>
                     </div>
                     <div className="p-2 rounded bg-black/5 dark:bg-white/5 flex items-start gap-2">
                       <span className="font-mono font-bold text-[#e6b000] shrink-0">Insurance Provider:</span>
@@ -363,7 +363,7 @@ export const SetupInstructionsModal: React.FC<SetupInstructionsModalProps> = ({
                   }`}
                 >
                   <div className="font-bold text-xs flex items-center justify-between text-[#686e4a] dark:text-[#c7ccaa]">
-                    <span>Official Barrie Partner Referral Codes</span>
+                    <span>Active Acquisition Channels & Partner Codes</span>
                     <span className="text-[10px] opacity-70">For Referral Code Field</span>
                   </div>
 
@@ -372,35 +372,35 @@ export const SetupInstructionsModal: React.FC<SetupInstructionsModalProps> = ({
                       <thead>
                         <tr className="border-b opacity-60">
                           <th className="pb-1 font-mono">Code</th>
-                          <th className="pb-1">Partner</th>
-                          <th className="pb-1">Commission</th>
+                          <th className="pb-1">Partner / Channel</th>
+                          <th className="pb-1">Type</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-black/5 dark:divide-white/5 font-mono">
                         <tr>
-                          <td className="py-1 font-bold text-[#686e4a] dark:text-[#c7ccaa]">CFIT-APEX</td>
-                          <td className="py-1 font-sans">Barrie CrossFit Apex</td>
-                          <td className="py-1">15% rev share</td>
+                          <td className="py-1 font-bold opacity-75">DIRECT</td>
+                          <td className="py-1 font-sans">No partner</td>
+                          <td className="py-1">Direct / Walk-in</td>
                         </tr>
                         <tr>
-                          <td className="py-1 font-bold text-[#686e4a] dark:text-[#c7ccaa]">LAKE-PHYS</td>
-                          <td className="py-1 font-sans">Lakeview Physiotherapy</td>
-                          <td className="py-1">12% rev share</td>
+                          <td className="py-1 font-bold text-[#686e4a] dark:text-[#c7ccaa]">META</td>
+                          <td className="py-1 font-sans">Meta</td>
+                          <td className="py-1">Instagram / Facebook</td>
                         </tr>
                         <tr>
-                          <td className="py-1 font-bold text-[#686e4a] dark:text-[#c7ccaa]">INNIS-PELV</td>
-                          <td className="py-1 font-sans">Innisfil Pelvic Health</td>
-                          <td className="py-1">$25 flat</td>
+                          <td className="py-1 font-bold text-[#686e4a] dark:text-[#c7ccaa]">GOOGLE</td>
+                          <td className="py-1 font-sans">Google</td>
+                          <td className="py-1">Google Search / Maps</td>
                         </tr>
                         <tr>
-                          <td className="py-1 font-bold text-[#686e4a] dark:text-[#c7ccaa]">BARRIE-CHIR</td>
-                          <td className="py-1 font-sans">Barrie Central Chiro</td>
-                          <td className="py-1">10% rev share</td>
+                          <td className="py-1 font-bold text-[#686e4a] dark:text-[#c7ccaa]">CLIENT-REF</td>
+                          <td className="py-1 font-sans">Existing Wellthera Client</td>
+                          <td className="py-1">Client Referral</td>
                         </tr>
                         <tr>
-                          <td className="py-1 font-bold opacity-60">DIRECT</td>
-                          <td className="py-1 font-sans">No partner / Direct Walk-in</td>
-                          <td className="py-1">$0</td>
+                          <td className="py-1 font-bold text-[#686e4a] dark:text-[#c7ccaa]">PARTNER</td>
+                          <td className="py-1 font-sans">Wellthera Partners</td>
+                          <td className="py-1">Clinic Partner</td>
                         </tr>
                       </tbody>
                     </table>
@@ -1240,11 +1240,11 @@ git push origin feature/partner-analytics-dashboard`}
                     <span>1. Partner ROI Tracking</span>
                   </div>
                   <p className="text-[11px] opacity-80 leading-relaxed">
-                    Wellthera collaborates with Barrie local businesses (Barrie CrossFit Apex, Lakeview Physiotherapy, Innisfil Pelvic Health, etc.).
+                    Wellthera tracks patient acquisition across digital channels (Google, Meta), direct clients (No partner), and custom Barrie referral partners you add in the registry.
                   </p>
                   <ul className="space-y-1 pl-2 text-[11px] list-disc opacity-80">
                     <li>
-                      <strong>Referral Codes:</strong> Each partner is assigned a code (e.g., <code>LAKE-PHYS</code>, <code>CFIT-APEX</code>).
+                      <strong>Referral Codes:</strong> Each channel or partner is assigned a code (e.g., <code>GOOGLE</code>, <code>META</code>, <code>DIRECT</code>, or custom partner codes).
                     </li>
                     <li>
                       <strong>Net Clinic Margin:</strong> Calculated as Gross Revenue minus Commissions and Retainers paid.

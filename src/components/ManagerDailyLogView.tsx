@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Calendar,
   DollarSign,
@@ -53,9 +53,55 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // Unified Origin / Partner options: all registered partners + any historical tags from ClinicSense customers & bookings
+  const originPartnerOptions = useMemo(() => {
+    const options: { id: string; name: string; referralCode?: string; category?: string }[] = [];
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+
+    for (const p of partners) {
+      if (!p.name?.trim()) continue;
+      options.push({
+        id: p.id,
+        name: p.name.trim(),
+        referralCode: p.referralCode,
+        category: p.category,
+      });
+      seenIds.add(p.id);
+      seenNames.add(p.name.trim().toLowerCase());
+    }
+
+    const addHistoricalTag = (rawId?: string, rawName?: string, rawCode?: string) => {
+      const name = (rawName || '').trim();
+      if (!name) return;
+      const lower = name.toLowerCase();
+      if (seenNames.has(lower)) return;
+      const slug = lower.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const id = rawId && !seenIds.has(rawId) ? rawId : `origin-${slug || options.length}`;
+      options.push({
+        id,
+        name,
+        referralCode: rawCode || slug.toUpperCase().slice(0, 10) || 'REF',
+      });
+      seenIds.add(id);
+      seenNames.add(lower);
+    };
+
+    for (const c of customers) {
+      addHistoricalTag(c.partnerId, c.partnerName, c.referralCode);
+    }
+    for (const b of bookings) {
+      addHistoricalTag(b.partnerId, b.partnerName);
+    }
+
+    return options;
+  }, [partners, customers, bookings]);
+
   // Quick Booking Form State
   const [customerName, setCustomerName] = useState('');
-  const [partnerId, setPartnerId] = useState(partners[0]?.id || 'p-1');
+  const [partnerId, setPartnerId] = useState(
+    () => partners.find((p) => p.id === 'no-partner')?.id || partners[0]?.id || 'no-partner'
+  );
   const [serviceCategory, setServiceCategory] = useState<ServiceCategory>(
     'Brazilian Lymphatic Drainage'
   );
@@ -70,6 +116,16 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
   const [patientPhone, setPatientPhone] = useState('(705) 555-0199');
   const [patientEmail, setPatientEmail] = useState('');
   const [insuranceProvider, setInsuranceProvider] = useState('Sun Life');
+
+  // Keep selected partnerId valid whenever partners / historical origins update
+  useEffect(() => {
+    if (originPartnerOptions.length === 0) return;
+    if (!originPartnerOptions.some((o) => o.id === partnerId)) {
+      const fallback =
+        originPartnerOptions.find((o) => o.id === 'no-partner') || originPartnerOptions[0];
+      if (fallback) setPartnerId(fallback.id);
+    }
+  }, [originPartnerOptions, partnerId]);
 
   // Search & Filter in Table
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,9 +181,47 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
 
   const handleCategoryChange = (cat: ServiceCategory) => {
     setServiceCategory(cat);
-    const options = serviceOptionsByCategory[cat] || [];
-    if (options[0]) {
-      setServiceTitle(options[0]);
+    const matchingProc = procedures.find((p) => p.category === cat && p.status === 'Active');
+    if (matchingProc) {
+      setServiceTitle(matchingProc.name);
+      setPriceCAD(matchingProc.priceCAD);
+      setInsuranceBilledCAD(matchingProc.typicalInsuranceBillingCAD);
+      setDurationMinutes(matchingProc.durationMinutes);
+    } else {
+      const options = serviceOptionsByCategory[cat] || [];
+      if (options[0]) {
+        setServiceTitle(options[0]);
+      }
+    }
+  };
+
+  const handlePatientNameChange = (val: string) => {
+    setCustomerName(val);
+    const matched = customers.find(
+      (c) => c.name.trim().toLowerCase() === val.trim().toLowerCase()
+    );
+    if (matched) {
+      const matchedOpt =
+        originPartnerOptions.find((o) => o.id === matched.partnerId) ||
+        originPartnerOptions.find(
+          (o) => o.name.toLowerCase() === (matched.partnerName || '').toLowerCase()
+        );
+      if (matchedOpt) {
+        setPartnerId(matchedOpt.id);
+      }
+    }
+  };
+
+  const handleProcedureTitleChange = (val: string) => {
+    setServiceTitle(val);
+    const matchedProc = procedures.find(
+      (p) => p.name.trim().toLowerCase() === val.trim().toLowerCase()
+    );
+    if (matchedProc) {
+      setServiceCategory(matchedProc.category);
+      setPriceCAD(matchedProc.priceCAD);
+      setInsuranceBilledCAD(matchedProc.typicalInsuranceBillingCAD);
+      setDurationMinutes(matchedProc.durationMinutes);
     }
   };
 
@@ -135,15 +229,20 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
     e.preventDefault();
     if (!customerName.trim()) return;
 
-    const partner = partners.find((p) => p.id === partnerId) || partners[0];
+    const selectedOrigin =
+      originPartnerOptions.find((p) => p.id === partnerId) ||
+      originPartnerOptions[0] || { id: 'no-partner', name: 'No partner', referralCode: 'DIRECT' };
+    const existingCustomer = customers.find(
+      (c) => c.name.trim().toLowerCase() === customerName.trim().toLowerCase()
+    );
     const newId = `b-${Date.now().toString().slice(-4)}`;
 
     const newBooking: ServiceBooking = {
       id: newId,
-      customerId: `c-${Date.now().toString().slice(-4)}`,
+      customerId: existingCustomer?.id || `c-${Date.now().toString().slice(-4)}`,
       customerName: customerName.trim(),
-      partnerId: partner.id,
-      partnerName: partner.name,
+      partnerId: selectedOrigin.id,
+      partnerName: selectedOrigin.name,
       serviceCategory,
       serviceTitle,
       bookingDate,
@@ -158,15 +257,19 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
     onAddNewBooking(newBooking);
 
     // Auto-register new customer if requested
-    if (autoRegisterCustomer) {
+    if (autoRegisterCustomer && !existingCustomer) {
       onAddNewCustomer({
         id: newBooking.customerId,
         name: customerName.trim(),
         email: patientEmail || `${customerName.toLowerCase().replace(/\s+/g, '.')}@email.com`,
         phone: patientPhone || '(705) 555-0100',
-        partnerId: partner.id,
-        partnerName: partner.name,
-        referralCode: `${partner.name.slice(0, 4).toUpperCase()}`,
+        partnerId: selectedOrigin.id,
+        partnerName: selectedOrigin.name,
+        referralCode:
+          selectedOrigin.referralCode ||
+          (selectedOrigin.id === 'no-partner'
+            ? 'DIRECT'
+            : selectedOrigin.name.slice(0, 6).toUpperCase().replace(/[^A-Z0-9]/g, '')),
         firstVisitDate: bookingDate,
         lastVisitDate: bookingDate,
         totalVisits: 1,
@@ -365,20 +468,26 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
               <input
                 type="text"
                 required
-                placeholder="e.g. Sarah Jenkins"
+                list="wellthera-patients-datalist"
+                placeholder="Type or pick existing patient..."
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
+                onChange={(e) => handlePatientNameChange(e.target.value)}
                 className={`w-full px-3 py-2 rounded-xl border text-xs transition-colors focus:outline-hidden focus:ring-1 focus:ring-[#686e4a] ${
                   isDarkMode
                     ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
                     : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
                 }`}
               />
+              <datalist id="wellthera-patients-datalist">
+                {customers.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+              </datalist>
             </div>
 
             {/* Partner / Source */}
             <div className="space-y-1">
-              <label className="font-semibold block">Referral Partner / Source *</label>
+              <label className="font-semibold block">Origin / Referral Partner *</label>
               <select
                 value={partnerId}
                 onChange={(e) => setPartnerId(e.target.value)}
@@ -388,7 +497,7 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
                     : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
                 }`}
               >
-                {partners.map((p) => (
+                {originPartnerOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
@@ -421,14 +530,22 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
               <label className="font-semibold block">Procedure Performed</label>
               <input
                 type="text"
+                list="wellthera-procedures-datalist"
                 value={serviceTitle}
-                onChange={(e) => setServiceTitle(e.target.value)}
+                onChange={(e) => handleProcedureTitleChange(e.target.value)}
                 className={`w-full px-3 py-2 rounded-xl border text-xs transition-colors focus:outline-hidden focus:ring-1 focus:ring-[#686e4a] ${
                   isDarkMode
                     ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
                     : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
                 }`}
               />
+              <datalist id="wellthera-procedures-datalist">
+                {procedures
+                  .filter((proc) => proc.status !== 'Inactive')
+                  .map((proc) => (
+                    <option key={proc.id} value={proc.name} />
+                  ))}
+              </datalist>
             </div>
           </div>
 

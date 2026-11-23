@@ -42,16 +42,18 @@ import {
   PartnerCategory,
   ServiceCategory,
   RfmSegment,
+  QuarterlyOkrPlan,
 } from '../types';
 import {
   createWelltheraGoogleSheet,
   syncDataToExistingSheet,
   syncDataViaAppsScript,
+  validateAppsScriptUrl,
   generateCsvDownload,
   DEFAULT_TARGET_DRIVE_FOLDER_ID,
   DEFAULT_TARGET_DRIVE_FOLDER_URL,
 } from '../services/googleSheets';
-import { initialPractitioners, initialProcedures } from '../data/initialData';
+import { initialPractitioners, initialProcedures, initialOkrPlans } from '../data/initialData';
 import { ConfirmationModal } from './ConfirmationModal';
 import { GoogleSheetsSetupModal } from './GoogleSheetsSetupModal';
 import { ManagerDailyLogView } from './ManagerDailyLogView';
@@ -63,6 +65,7 @@ interface GoogleSheetTrackerViewProps {
   cacChannels: CacChannelSpend[];
   practitioners?: Practitioner[];
   procedures?: ClinicProcedure[];
+  okrPlans?: QuarterlyOkrPlan[];
   syncState: GoogleSheetSyncState;
   setSyncState: React.Dispatch<React.SetStateAction<GoogleSheetSyncState>>;
   accessToken: string | null;
@@ -104,6 +107,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   cacChannels,
   practitioners = initialPractitioners,
   procedures = initialProcedures,
+  okrPlans = initialOkrPlans,
   syncState,
   setSyncState,
   accessToken,
@@ -133,6 +137,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   const [isAddProcedureModalOpen, setIsAddProcedureModalOpen] = useState(false);
   const [showStaffQuickGuide, setShowStaffQuickGuide] = useState(false);
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
+  const [setupModalTab, setSetupModalTab] = useState<'appscript' | 'connect' | 'download'>('appscript');
 
   // New Practitioner Form State
   const [newPractName, setNewPractName] = useState('');
@@ -168,13 +173,13 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
 
   // Assign Partner to Customer Modal State
   const [assigningCustomer, setAssigningCustomer] = useState<Customer | null>(null);
-  const [assignPartnerId, setAssignPartnerId] = useState<string>('p-1');
+  const [assignPartnerId, setAssignPartnerId] = useState<string>('no-partner');
   const [assignReferralCode, setAssignReferralCode] = useState<string>('');
   const [assignUpdateBookings, setAssignUpdateBookings] = useState<boolean>(true);
 
   // Assign Partner to Booking Modal State
   const [assigningBooking, setAssigningBooking] = useState<ServiceBooking | null>(null);
-  const [assignBookingPartnerId, setAssignBookingPartnerId] = useState<string>('p-1');
+  const [assignBookingPartnerId, setAssignBookingPartnerId] = useState<string>('no-partner');
 
   // Edit Partner Modal State
   const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
@@ -187,7 +192,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   const [editingProcedure, setEditingProcedure] = useState<ClinicProcedure | null>(null);
   const [editProcPractitioners, setEditProcPractitioners] = useState<string>('');
 
-  // Customer Filter & Pagination State (for 1,090 ClinicSense records)
+  // Customer Filter & Pagination State (ClinicSense patient database)
   const [customerSearch, setCustomerSearch] = useState<string>('');
   const [customerPartnerFilter, setCustomerPartnerFilter] = useState<string>('all');
   const [customerRfmFilter, setCustomerRfmFilter] = useState<string>('all');
@@ -218,8 +223,13 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
         }
       }
       // Partner filter
-      if (customerPartnerFilter === 'unassigned') {
-        if (c.partnerId && c.partnerId !== 'direct' && c.partnerId !== 'p-8') {
+      if (customerPartnerFilter === 'unassigned' || customerPartnerFilter === 'no-partner') {
+        if (
+          c.partnerId &&
+          c.partnerId !== 'no-partner' &&
+          c.partnerId !== 'direct' &&
+          c.partnerId !== 'p-8'
+        ) {
           return false;
         }
       } else if (customerPartnerFilter !== 'all') {
@@ -246,15 +256,19 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   // Open Partner Assignment Modal for a Customer
   const handleOpenAssignCustomerModal = (customer: Customer) => {
     setAssigningCustomer(customer);
-    const initialPartnerId =
-      customer.partnerId && customer.partnerId !== 'direct'
-        ? customer.partnerId
-        : partners[0]?.id || 'p-1';
+    const isNoPartner =
+      !customer.partnerId ||
+      customer.partnerId === 'no-partner' ||
+      customer.partnerId === 'direct' ||
+      customer.partnerId === 'p-8';
+    const initialPartnerId = isNoPartner ? 'no-partner' : customer.partnerId;
     setAssignPartnerId(initialPartnerId);
 
     const partner = partners.find((p) => p.id === initialPartnerId);
     setAssignReferralCode(
-      customer.referralCode && customer.referralCode !== 'DIRECT'
+      isNoPartner
+        ? 'DIRECT'
+        : customer.referralCode && customer.referralCode !== 'DIRECT'
         ? customer.referralCode
         : partner?.referralCode || (partner ? partner.name.split(' ')[0].toUpperCase() + '-REF' : 'REF')
     );
@@ -266,12 +280,12 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
     e.preventDefault();
     if (!assigningCustomer) return;
 
-    if (assignPartnerId === 'direct') {
+    if (assignPartnerId === 'no-partner' || assignPartnerId === 'direct') {
       if (onAssignPartnerToCustomer) {
         onAssignPartnerToCustomer(
           assigningCustomer.id,
-          'direct',
-          'Direct / Organic',
+          'no-partner',
+          'No partner',
           'DIRECT',
           assignUpdateBookings
         );
@@ -300,7 +314,12 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   // Open Partner Assignment for a Booking
   const handleOpenAssignBookingModal = (booking: ServiceBooking) => {
     setAssigningBooking(booking);
-    setAssignBookingPartnerId(booking.partnerId || partners[0]?.id || 'p-1');
+    const isNoPartner =
+      !booking.partnerId ||
+      booking.partnerId === 'no-partner' ||
+      booking.partnerId === 'direct' ||
+      booking.partnerId === 'p-8';
+    setAssignBookingPartnerId(isNoPartner ? 'no-partner' : booking.partnerId);
   };
 
   // Submit Partner Assignment for a Booking
@@ -308,9 +327,9 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
     e.preventDefault();
     if (!assigningBooking) return;
 
-    if (assignBookingPartnerId === 'direct') {
+    if (assignBookingPartnerId === 'no-partner' || assignBookingPartnerId === 'direct') {
       if (onAssignPartnerToBooking) {
-        onAssignPartnerToBooking(assigningBooking.id, 'direct', 'Direct / Organic');
+        onAssignPartnerToBooking(assigningBooking.id, 'no-partner', 'No partner');
       }
     } else {
       const partner = partners.find((p) => p.id === assignBookingPartnerId);
@@ -392,7 +411,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   const [newCustName, setNewCustName] = useState('');
   const [newCustEmail, setNewCustEmail] = useState('');
   const [newCustPhone, setNewCustPhone] = useState('');
-  const [newCustPartnerId, setNewCustPartnerId] = useState(partners[0]?.id || 'p-1');
+  const [newCustPartnerId, setNewCustPartnerId] = useState(partners[0]?.id || 'no-partner');
   const [newCustService, setNewCustService] = useState('Brazilian Lymphatic Drainage');
   const [newCustInsurance, setNewCustInsurance] = useState('Sun Life');
   const [newCustSpend, setNewCustSpend] = useState(160);
@@ -403,7 +422,8 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   const [newPartnerCategory, setNewPartnerCategory] = useState<Partner['category']>('Fitness & CrossFit');
   const [newPartnerContact, setNewPartnerContact] = useState('');
   const [newPartnerEmail, setNewPartnerEmail] = useState('');
-  const [newPartnerCommission, setNewPartnerCommission] = useState(15);
+  const [newPartnerCode, setNewPartnerCode] = useState('');
+  const [newPartnerCommission, setNewPartnerCommission] = useState(10);
 
   const handleCreatePractitioner = (e: React.FormEvent) => {
     e.preventDefault();
@@ -490,6 +510,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
               cacChannels,
               practitioners,
               procedures,
+              okrPlans,
             },
             DEFAULT_TARGET_DRIVE_FOLDER_ID
           );
@@ -516,44 +537,62 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
   };
 
   const handleSyncUpdatesPrompt = () => {
-    // 1. If Apps Script Webhook is configured, sync directly via Apps Script
+    // 1. If Apps Script Webhook is configured, validate URL before attempting POST
     if (syncState.appsScriptUrl) {
-      setConfirmationConfig({
-        isOpen: true,
-        title: 'Synchronize with Google Sheet via Apps Script?',
-        description:
-          'This action will send Dashboard data directly to your Google Sheet via the configured Webhook.',
-        details: [
-          `Webhook URL: ${syncState.appsScriptUrl}`,
-          `Syncing ${customers.length} Customers, ${partners.length} Partners, and ${bookings.length} Bookings`,
-        ],
-        action: async () => {
-          try {
-            setSyncState((prev) => ({ ...prev, isSyncing: true, syncMessage: 'Syncing via Apps Script Webhook...' }));
-            const res = await syncDataViaAppsScript(syncState.appsScriptUrl!, {
-              customers,
-              partners,
-              bookings,
-              cacChannels,
-            });
+      const urlCheck = validateAppsScriptUrl(syncState.appsScriptUrl);
+      if (!urlCheck.valid) {
+        // If user has OAuth + sheetId ready, fall through to OAuth sync; otherwise open Connect modal directly
+        if (!(accessToken && syncState.sheetId)) {
+          setSyncState((prev) => ({
+            ...prev,
+            syncMessage: `Sync error: ${urlCheck.error}`,
+          }));
+          setSetupModalTab('connect');
+          setIsSetupModalOpen(true);
+          return;
+        }
+      } else {
+        setConfirmationConfig({
+          isOpen: true,
+          title: 'Synchronize with Google Sheet via Apps Script?',
+          description:
+            'This action will send all Dashboard datasets (Customers, Bookings, Partners, Practitioners, Procedures, CAC, and OKRs) directly to your Google Sheet via the configured Webhook.',
+          details: [
+            `Webhook URL: ${urlCheck.normalizedUrl}`,
+            `Syncing ${customers.length.toLocaleString()} Patients, ${partners.length} Partners, ${bookings.length} Bookings, ${practitioners.length} Practitioners, ${procedures.length} Procedures, and ${okrPlans.length} OKR Quarters`,
+          ],
+          action: async () => {
+            try {
+              setSyncState((prev) => ({ ...prev, isSyncing: true, syncMessage: 'Syncing via Apps Script Webhook...' }));
+              const res = await syncDataViaAppsScript(urlCheck.normalizedUrl, {
+                customers,
+                partners,
+                bookings,
+                cacChannels,
+                practitioners,
+                procedures,
+                okrPlans,
+              });
 
-            setSyncState((prev) => ({
-              ...prev,
-              lastSyncedAt: new Date().toLocaleTimeString(),
-              isSyncing: false,
-              syncMessage: res.message || 'Successfully synchronized via Apps Script!',
-            }));
-          } catch (err: any) {
-            console.error(err);
-            setSyncState((prev) => ({
-              ...prev,
-              isSyncing: false,
-              syncMessage: `Sync error: ${err.message}`,
-            }));
-          }
-        },
-      });
-      return;
+              setSyncState((prev) => ({
+                ...prev,
+                appsScriptUrl: urlCheck.normalizedUrl,
+                lastSyncedAt: new Date().toLocaleTimeString(),
+                isSyncing: false,
+                syncMessage: res.message || 'Successfully synchronized via Apps Script!',
+              }));
+            } catch (err: any) {
+              console.error(err);
+              setSyncState((prev) => ({
+                ...prev,
+                isSyncing: false,
+                syncMessage: `Sync error: ${err.message}`,
+              }));
+            }
+          },
+        });
+        return;
+      }
     }
 
     // 2. If Google OAuth token and sheetId are available, sync via Google Sheets REST API
@@ -562,10 +601,10 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
         isOpen: true,
         title: 'Push All Updates to Google Sheet?',
         description:
-          'This will update existing cells in your Google Sheet on Google Drive with the latest data from this application.',
+          'This will update all tabs in your Google Sheet on Google Drive with the latest data from this application.',
         details: [
           `Target Sheet: ${syncState.sheetUrl}`,
-          `Updating ${customers.length} Customers, ${partners.length} Partners, and ${bookings.length} Bookings`,
+          `Updating ${customers.length.toLocaleString()} Patients, ${partners.length} Partners, ${bookings.length} Bookings, ${practitioners.length} Practitioners, ${procedures.length} Procedures, and ${okrPlans.length} OKR Quarters`,
         ],
         action: async () => {
           try {
@@ -575,6 +614,9 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
               partners,
               bookings,
               cacChannels,
+              practitioners,
+              procedures,
+              okrPlans,
             });
 
             setSyncState((prev) => ({
@@ -655,17 +697,35 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
 
   const submitNewPartner = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPartnerName.trim()) return;
+    const trimmedName = newPartnerName.trim();
+    if (!trimmedName) return;
+
+    const slug = trimmedName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 20);
+    const autoCode =
+      newPartnerCode.trim().toUpperCase() ||
+      trimmedName
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .slice(0, 6)
+        .toUpperCase() + '-REF';
 
     const partner: Partner = {
-      id: `p-${Date.now().toString().slice(-4)}`,
-      name: newPartnerName,
+      id: `p-${slug || 'partner'}-${Date.now().toString().slice(-4)}`,
+      name: trimmedName,
       category: newPartnerCategory,
-      contactPerson: newPartnerContact || 'Clinic Contact',
-      email: newPartnerEmail || `contact@${newPartnerName.toLowerCase().replace(/[^a-z]/g, '')}.ca`,
-      phone: '(705) 555-9000',
+      contactPerson: newPartnerContact.trim() || 'Clinic Contact',
+      email:
+        newPartnerEmail.trim() ||
+        `contact@${trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'partner'}.ca`,
+      phone: '(705) 555-0100',
       commissionType: 'Percentage',
-      commissionValue: Number(newPartnerCommission) || 15,
+      commissionValue: Number.isFinite(Number(newPartnerCommission))
+        ? Number(newPartnerCommission)
+        : 0,
+      referralCode: autoCode,
       monthlyRetainerCAD: 0,
       referredCustomersCount: 0,
       activeCustomersCount: 0,
@@ -680,8 +740,12 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
 
     onAddNewPartner(partner);
     setIsAddPartnerModalOpen(false);
+    setActiveTab('partners');
     setNewPartnerName('');
     setNewPartnerContact('');
+    setNewPartnerEmail('');
+    setNewPartnerCode('');
+    setNewPartnerCommission(10);
   };
 
   return (
@@ -728,7 +792,10 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
         {/* Action Buttons: Create Sheet, Push Updates, Download CSV */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <button
-            onClick={() => setIsSetupModalOpen(true)}
+            onClick={() => {
+              setSetupModalTab('appscript');
+              setIsSetupModalOpen(true);
+            }}
             className={`px-3.5 py-2 rounded-full font-semibold flex items-center gap-1.5 transition-colors border shadow-xs cursor-pointer ${
               isDarkMode
                 ? 'bg-[#1c2015] border-[#343a27] text-[#e6b000] hover:bg-[#252a1c]'
@@ -904,7 +971,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                 Open <strong>Customers & RFM</strong> and add the profile: Name, Phone, Email, Insurance Provider, and Referral Partner Code.
               </p>
               <p className="text-[10px] opacity-70 font-mono">
-                Barrie Referral Codes: <code className="font-bold">CFIT-APEX</code> | <code className="font-bold">LAKE-PHYS</code> | <code className="font-bold">INNIS-PELV</code> | <code className="font-bold">BARRIE-CHIR</code> | <code className="font-bold">DIRECT</code>
+                Active Codes: <code className="font-bold">DIRECT</code> (No partner) | <code className="font-bold">CLIENT-REF</code> (Existing Wellthera Client) | <code className="font-bold">GOOGLE</code> | <code className="font-bold">PARTNER</code> (Wellthera Partners) | <code className="font-bold">META</code> | + Custom Partner Codes
               </p>
             </div>
           </div>
@@ -927,34 +994,59 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
       )}
 
       {/* Sync Status Banner */}
-      {syncState.syncMessage && (
-        <div
-          className={`rounded-xl px-4 py-2 text-xs flex items-center justify-between border ${
-            isDarkMode
-              ? 'bg-[#14160e] border-[#292e1e] text-[#c7ccaa]'
-              : 'bg-[#edf0e6] border-[#bcc2a4] text-[#332e1e]'
-          }`}
-        >
-          <div className="flex items-center gap-2 font-mono">
-            <span className="w-2 h-2 rounded-full bg-[#686e4a] animate-pulse" />
-            <span>{syncState.syncMessage}</span>
-            {syncState.lastSyncedAt && (
-              <span className="opacity-70">({syncState.lastSyncedAt})</span>
-            )}
+      {syncState.syncMessage && (() => {
+        const isError = /error|failed|405|invalid/i.test(syncState.syncMessage);
+        return (
+          <div
+            className={`rounded-xl px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-3 border ${
+              isError
+                ? isDarkMode
+                  ? 'bg-red-950/30 border-red-800/60 text-red-200'
+                  : 'bg-red-50 border-red-200 text-red-900'
+                : isDarkMode
+                ? 'bg-[#14160e] border-[#292e1e] text-[#c7ccaa]'
+                : 'bg-[#edf0e6] border-[#bcc2a4] text-[#332e1e]'
+            }`}
+          >
+            <div className="flex items-start sm:items-center gap-2 font-mono flex-1 min-w-[240px]">
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 mt-1 sm:mt-0 ${
+                  isError ? 'bg-red-500' : 'bg-[#686e4a] animate-pulse'
+                }`}
+              />
+              <span className="leading-relaxed">{syncState.syncMessage}</span>
+              {syncState.lastSyncedAt && !isError && (
+                <span className="opacity-70 shrink-0">({syncState.lastSyncedAt})</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {isError && (
+                <button
+                  onClick={() => {
+                    setSetupModalTab('connect');
+                    setIsSetupModalOpen(true);
+                  }}
+                  className="px-3 py-1 rounded-full bg-red-600 hover:bg-red-700 text-white font-sans font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <Settings className="w-3 h-3" />
+                  <span>Fix Sync Setup</span>
+                </button>
+              )}
+              {syncState.sheetUrl && (
+                <a
+                  href={syncState.sheetUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[#686e4a] dark:text-[#c7ccaa] font-bold hover:underline flex items-center gap-1"
+                >
+                  <span>View Sheet ID: {syncState.sheetId?.slice(0, 12)}...</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
           </div>
-          {syncState.sheetUrl && (
-            <a
-              href={syncState.sheetUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[#686e4a] dark:text-[#c7ccaa] font-bold hover:underline flex items-center gap-1"
-            >
-              <span>View Sheet ID: {syncState.sheetId?.slice(0, 12)}...</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       {/* Google Sheet Tabs Selector + Table Controls */}
       <div
@@ -1091,7 +1183,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                       setCustomerSearch(e.target.value);
                       setCustomerPage(1);
                     }}
-                    placeholder="Search 1,090 patients by name, email, phone, or service..."
+                    placeholder={`Search ${customers.length.toLocaleString()} patients by name, email, phone, or service...`}
                     className={`w-full pl-8 pr-7 py-1.5 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
                       isDarkMode
                         ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
@@ -1128,10 +1220,10 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                   >
                     <option value="all">All Patients ({customers.length})</option>
                     <option value="unassigned">
-                      Direct / Unassigned ({customers.filter((c) => !c.partnerId || c.partnerId === 'direct' || c.partnerId === 'p-8').length})
+                      No partner ({customers.filter((c) => !c.partnerId || c.partnerId === 'no-partner' || c.partnerId === 'direct' || c.partnerId === 'p-8').length})
                     </option>
                     {partners
-                      .filter((p) => p.id !== 'p-8')
+                      .filter((p) => p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct')
                       .map((p) => {
                         const count = customers.filter((c) => c.partnerId === p.id).length;
                         return (
@@ -1212,7 +1304,10 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                 <tbody className="divide-y divide-inherit font-mono">
                   {paginatedCustomers.map((c) => {
                     const isPartnerAssigned =
-                      c.partnerId && c.partnerId !== 'direct' && c.partnerId !== 'p-8';
+                      c.partnerId &&
+                      c.partnerId !== 'no-partner' &&
+                      c.partnerId !== 'direct' &&
+                      c.partnerId !== 'p-8';
                     return (
                       <tr
                         key={c.id}
@@ -1248,7 +1343,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                             }`}
                             title="Click to assign or reassign partner"
                           >
-                            <span>{c.partnerName || 'Direct / Organic'}</span>
+                            <span>{c.partnerName || 'No partner'}</span>
                             <Pencil className="w-3 h-3 opacity-70" />
                           </button>
                         </td>
@@ -1459,14 +1554,14 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
-                          {p.id !== 'p-8' && (
+                          {p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct' && (
                             <button
                               type="button"
                               onClick={() => {
                                 setConfirmationConfig({
                                   isOpen: true,
                                   title: `Delete Partner "${p.name}"?`,
-                                  description: `Are you sure you want to remove ${p.name}? Any patients currently linked will be converted to Direct / Organic.`,
+                                  description: `Are you sure you want to remove ${p.name}? Any patients currently linked will be reassigned to "No partner".`,
                                   details: [
                                     `Partner ID: ${p.id}`,
                                     `Category: ${p.category}`,
@@ -1538,7 +1633,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                         className="px-2 py-1 rounded-md text-xs font-semibold bg-neutral-100 dark:bg-neutral-800 hover:bg-[#686e4a]/20 flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-300 dark:border-neutral-700"
                         title="Click to edit partner source for this appointment log"
                       >
-                        <span>{b.partnerName || 'Direct / Organic'}</span>
+                        <span>{b.partnerName || 'No partner'}</span>
                         <Pencil className="w-2.5 h-2.5 opacity-60" />
                       </button>
                     </td>
@@ -2031,42 +2126,81 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                       : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
                   }`}
                 >
+                  <option value="Clinic Referral Partner">Clinic Referral Partner</option>
+                  <option value="Client Referral">Client Referral</option>
                   <option value="Fitness & CrossFit">Fitness & CrossFit</option>
                   <option value="Physiotherapy & Chiro">Physiotherapy & Chiro</option>
                   <option value="OB-GYN, Doulas & Pelvic Health">OB-GYN, Doulas & Pelvic Health</option>
                   <option value="MedSpa & Aesthetics">MedSpa & Aesthetics</option>
                   <option value="Local Wellness Influencer">Local Wellness Influencer</option>
                   <option value="Corporate Wellness">Corporate Wellness</option>
+                  <option value="Paid Social (Meta)">Paid Social (Meta)</option>
+                  <option value="Paid & Organic Search (Google)">Paid & Organic Search (Google)</option>
+                  <option value="Direct / No Partner">Direct / No Partner</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block mb-1 font-semibold opacity-75">Contact Person</label>
-                <input
-                  type="text"
-                  value={newPartnerContact}
-                  onChange={(e) => setNewPartnerContact(e.target.value)}
-                  placeholder="e.g. Samantha King"
-                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
-                    isDarkMode
-                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
-                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
-                  }`}
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Contact Person</label>
+                  <input
+                    type="text"
+                    value={newPartnerContact}
+                    onChange={(e) => setNewPartnerContact(e.target.value)}
+                    placeholder="e.g. Clinic Manager"
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Referral Code</label>
+                  <input
+                    type="text"
+                    value={newPartnerCode}
+                    onChange={(e) => setNewPartnerCode(e.target.value)}
+                    placeholder="Auto if empty"
+                    className={`w-full rounded-lg p-2 border uppercase font-mono focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block mb-1 font-semibold opacity-75">Referral Commission Rate (%)</label>
-                <input
-                  type="number"
-                  value={newPartnerCommission}
-                  onChange={(e) => setNewPartnerCommission(Number(e.target.value))}
-                  className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
-                    isDarkMode
-                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
-                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
-                  }`}
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Contact Email</label>
+                  <input
+                    type="email"
+                    value={newPartnerEmail}
+                    onChange={(e) => setNewPartnerEmail(e.target.value)}
+                    placeholder="partner@domain.ca"
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-75">Commission Rate (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={newPartnerCommission}
+                    onChange={(e) => setNewPartnerCommission(Number(e.target.value))}
+                    className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
               </div>
 
               <div
@@ -2462,21 +2596,21 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
               </div>
               <div className="text-[11px] font-semibold text-[#686e4a] dark:text-[#c7ccaa] mt-1">
                 Current Partner:{' '}
-                <span className="font-bold">{assigningCustomer.partnerName || 'Direct / Organic'}</span>
+                <span className="font-bold">{assigningCustomer.partnerName || 'No partner'}</span>
               </div>
             </div>
 
             <form onSubmit={handleSaveCustomerPartner} className="space-y-4 text-xs">
               <div>
                 <label className="block mb-1 font-semibold opacity-75">
-                  Select Referral Partner *
+                  Select Referral Partner / Acquisition Channel *
                 </label>
                 <select
                   value={assignPartnerId}
                   onChange={(e) => {
                     const selectedId = e.target.value;
                     setAssignPartnerId(selectedId);
-                    if (selectedId === 'direct') {
+                    if (selectedId === 'no-partner' || selectedId === 'direct') {
                       setAssignReferralCode('DIRECT');
                     } else {
                       const found = partners.find((p) => p.id === selectedId);
@@ -2492,20 +2626,20 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                       : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
                   }`}
                 >
-                  <option value="direct">Direct / Organic (No Referral Partner)</option>
-                  <optgroup label="Active Referral Partners">
+                  <option value="no-partner">No partner (Direct / Organic)</option>
+                  <optgroup label="Active Partners & Channels">
                     {partners
-                      .filter((p) => p.id !== 'p-8')
+                      .filter((p) => p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct')
                       .map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name} ({p.category}) — {p.commissionType === 'Percentage' ? `${p.commissionValue}% rev` : `$${p.commissionValue} flat`}
+                          {p.name} ({p.category}) — {p.commissionType === 'Percentage' ? `${p.commissionValue}% rev` : p.commissionType === 'FlatPerBooking' ? `$${p.commissionValue} flat` : 'Channel'}
                         </option>
                       ))}
                   </optgroup>
                 </select>
               </div>
 
-              {assignPartnerId !== 'direct' && (
+              {assignPartnerId !== 'no-partner' && assignPartnerId !== 'direct' && (
                 <div>
                   <label className="block mb-1 font-semibold opacity-75">
                     Referral Code / Campaign Identifier
@@ -2552,12 +2686,12 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setAssignPartnerId('direct');
+                    setAssignPartnerId('no-partner');
                     setAssignReferralCode('DIRECT');
                   }}
                   className="text-xs text-amber-600 dark:text-amber-400 hover:underline font-semibold"
                 >
-                  Clear (Make Organic)
+                  Set to No partner
                 </button>
 
                 <div className="flex items-center gap-2">
@@ -2637,9 +2771,9 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                       : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
                   }`}
                 >
-                  <option value="direct">Direct / Organic (No Partner)</option>
+                  <option value="no-partner">No partner (Direct / Organic)</option>
                   {partners
-                    .filter((p) => p.id !== 'p-8')
+                    .filter((p) => p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct')
                     .map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name} ({p.category})
@@ -2726,12 +2860,17 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                         : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
                     }`}
                   >
+                    <option value="Clinic Referral Partner">Clinic Referral Partner</option>
+                    <option value="Client Referral">Client Referral</option>
                     <option value="Fitness & CrossFit">Fitness & CrossFit</option>
                     <option value="Physiotherapy & Chiro">Physiotherapy & Chiro</option>
                     <option value="OB-GYN, Doulas & Pelvic Health">OB-GYN, Doulas & Pelvic Health</option>
                     <option value="MedSpa & Aesthetics">MedSpa & Aesthetics</option>
                     <option value="Local Wellness Influencer">Local Wellness Influencer</option>
                     <option value="Corporate Wellness">Corporate Wellness</option>
+                    <option value="Paid Social (Meta)">Paid Social (Meta)</option>
+                    <option value="Paid & Organic Search (Google)">Paid & Organic Search (Google)</option>
+                    <option value="Direct / No Partner">Direct / No Partner</option>
                   </select>
                 </div>
                 <div>
@@ -3216,15 +3355,19 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
       <GoogleSheetsSetupModal
         isOpen={isSetupModalOpen}
         onClose={() => setIsSetupModalOpen(false)}
+        initialTab={setupModalTab}
         isDarkMode={isDarkMode}
         syncState={syncState}
         onSaveSyncSettings={(settings) => {
           setSyncState((prev) => ({
             ...prev,
-            sheetId: settings.sheetId ?? prev.sheetId,
-            sheetUrl: settings.sheetUrl ?? prev.sheetUrl,
-            appsScriptUrl: settings.appsScriptUrl ?? prev.appsScriptUrl,
-            syncMessage: 'Synchronization settings successfully updated!',
+            sheetId: settings.sheetId,
+            sheetUrl: settings.sheetUrl,
+            appsScriptUrl: settings.appsScriptUrl,
+            syncMode: settings.appsScriptUrl ? 'appscript' : 'oauth',
+            syncMessage: settings.appsScriptUrl
+              ? 'Apps Script Webhook saved! Click "Sync to Sheet" to push updates.'
+              : 'Google Sheet link saved successfully!',
           }));
         }}
         customers={customers}
@@ -3233,6 +3376,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
         cacChannels={cacChannels}
         practitioners={practitioners}
         procedures={procedures}
+        okrPlans={okrPlans}
         accessToken={accessToken}
         onSignInGoogle={onOpenSignIn}
         onCreateViaOAuth={handleCreateSheetPrompt}

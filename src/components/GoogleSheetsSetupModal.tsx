@@ -13,6 +13,7 @@ import {
   Key,
   ShieldCheck,
   Zap,
+  RefreshCw,
 } from 'lucide-react';
 import {
   Customer,
@@ -22,6 +23,7 @@ import {
   GoogleSheetSyncState,
   Practitioner,
   ClinicProcedure,
+  QuarterlyOkrPlan,
 } from '../types';
 import {
   DEFAULT_TARGET_DRIVE_FOLDER_ID,
@@ -29,13 +31,16 @@ import {
   parseSpreadsheetIdFromInput,
   generateCsvDownload,
   downloadCompleteJsonPackage,
+  validateAppsScriptUrl,
+  testAppsScriptConnection,
 } from '../services/googleSheets';
 import { generateWelltheraAppsScript } from '../services/welltheraAppsScriptCode';
-import { initialPractitioners, initialProcedures } from '../data/initialData';
+import { initialPractitioners, initialProcedures, initialOkrPlans } from '../data/initialData';
 
 interface GoogleSheetsSetupModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: 'appscript' | 'connect' | 'download';
   isDarkMode?: boolean;
   syncState: GoogleSheetSyncState;
   onSaveSyncSettings: (settings: {
@@ -49,6 +54,7 @@ interface GoogleSheetsSetupModalProps {
   cacChannels: CacChannelSpend[];
   practitioners?: Practitioner[];
   procedures?: ClinicProcedure[];
+  okrPlans?: QuarterlyOkrPlan[];
   accessToken: string | null;
   onSignInGoogle: () => void;
   onCreateViaOAuth: () => void;
@@ -57,6 +63,7 @@ interface GoogleSheetsSetupModalProps {
 export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
   isOpen,
   onClose,
+  initialTab = 'appscript',
   isDarkMode = false,
   syncState,
   onSaveSyncSettings,
@@ -66,17 +73,41 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
   cacChannels,
   practitioners = initialPractitioners,
   procedures = initialProcedures,
+  okrPlans = initialOkrPlans,
   accessToken,
   onSignInGoogle,
   onCreateViaOAuth,
 }) => {
-  const [activeTab, setActiveTab] = useState<'appscript' | 'connect' | 'download'>('appscript');
+  const [activeTab, setActiveTab] = useState<'appscript' | 'connect' | 'download'>(initialTab);
   const [copiedScript, setCopiedScript] = useState(false);
   const [sheetInput, setSheetInput] = useState(syncState.sheetUrl || syncState.sheetId || '');
   const [appsScriptInput, setAppsScriptInput] = useState(syncState.appsScriptUrl || '');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    getOk?: boolean;
+    postOk?: boolean;
+    message: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+      setSheetInput(syncState.sheetUrl || syncState.sheetId || '');
+      setAppsScriptInput(syncState.appsScriptUrl || '');
+      setSaveError(null);
+      setSaveFeedback(null);
+      setTestResult(null);
+    }
+  }, [isOpen, initialTab, syncState.sheetUrl, syncState.sheetId, syncState.appsScriptUrl]);
 
   if (!isOpen) return null;
+
+  const webhookValidation = appsScriptInput.trim()
+    ? validateAppsScriptUrl(appsScriptInput)
+    : null;
 
   const appsScriptCode = generateWelltheraAppsScript(
     customers,
@@ -84,7 +115,8 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
     bookings,
     cacChannels,
     practitioners,
-    procedures
+    procedures,
+    okrPlans
   );
 
   const handleCopyScript = () => {
@@ -93,24 +125,48 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
     setTimeout(() => setCopiedScript(false), 3000);
   };
 
+  const handleTestWebhook = async () => {
+    setSaveError(null);
+    setTestResult(null);
+    setIsTestingWebhook(true);
+    try {
+      const result = await testAppsScriptConnection(appsScriptInput);
+      setTestResult(result);
+    } finally {
+      setIsTestingWebhook(false);
+    }
+  };
+
   const handleSaveConnection = (e: React.FormEvent) => {
     e.preventDefault();
+    setSaveError(null);
+
     const cleanId = parseSpreadsheetIdFromInput(sheetInput);
     const cleanUrl = cleanId
       ? `https://docs.google.com/spreadsheets/d/${cleanId}/edit`
       : null;
 
+    let finalWebhookUrl: string | null = null;
+    if (appsScriptInput.trim()) {
+      const check = validateAppsScriptUrl(appsScriptInput);
+      if (!check.valid) {
+        setSaveError(check.error || 'Please enter a valid Apps Script Web App URL ending in /exec.');
+        return;
+      }
+      finalWebhookUrl = check.normalizedUrl;
+    }
+
     onSaveSyncSettings({
       sheetId: cleanId,
       sheetUrl: cleanUrl,
-      appsScriptUrl: appsScriptInput.trim() || null,
+      appsScriptUrl: finalWebhookUrl,
     });
 
     setSaveFeedback('Synchronization settings saved successfully!');
     setTimeout(() => {
       setSaveFeedback(null);
       onClose();
-    }, 1500);
+    }, 1200);
   };
 
   const handleDownloadAllCsvs = () => {
@@ -143,6 +199,18 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
     const procHeaders = ['Procedure ID', 'Procedure Name', 'Category', 'Duration (Min)', 'Standard Price (CAD)', 'Insurance Eligible', 'Avg Direct Billed (CAD)', 'Typical Copay (CAD)', 'Assigned Practitioners', 'Status', 'Clinical Description'];
     const procRows = procedures.map((proc) => [proc.id, proc.name, proc.category, proc.durationMinutes, proc.priceCAD, proc.insuranceCovered ? 'Yes' : 'No', proc.typicalInsuranceBillingCAD, proc.typicalCopayCAD, Array.isArray(proc.assignedPractitioners) ? proc.assignedPractitioners.join(', ') : proc.assignedPractitioners, proc.status, proc.description]);
     generateCsvDownload('6_wellthera_procedures_treatments', procHeaders, procRows);
+
+    // 7. OKRs & Quarterly Goals
+    const okrHeaders = ['Quarter', 'Year', 'Revenue Goal (CAD)', 'CAC Benchmark (CAD)', 'LTV:CAC Target', 'New Patients Target', 'Retention Target (%)', 'Partner Share Target (%)', 'Objective', 'Owner', 'Key Result', 'Current Value', 'Target Value', 'Unit', 'Status'];
+    const okrRows: (string | number)[][] = [];
+    okrPlans.forEach((plan) => {
+      plan.objectives.forEach((obj) => {
+        obj.keyResults.forEach((kr) => {
+          okrRows.push([plan.quarter, plan.year, plan.revenueGoalCAD, plan.cacBenchmarkCAD, plan.ltvCacTargetRatio, plan.newPatientsTarget, plan.retentionTargetRate, plan.partnerRevenueShareTarget, obj.title, obj.owner, kr.title, kr.currentValue, kr.targetValue, kr.unit || '', kr.status]);
+        });
+      });
+    });
+    generateCsvDownload('7_wellthera_okrs_goals', okrHeaders, okrRows);
   };
 
   return (
@@ -231,7 +299,7 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
                     <span>How to Generate the Full Spreadsheet with the Front Desk Dashboard</span>
                   </div>
                   <p className="text-[11px] opacity-80 leading-relaxed">
-                    This script creates the primary <strong>"🛎️ FRONT DESK DASHBOARD"</strong> tab (where the receptionist types the patient name to check history, visits and log checkouts with 1 click), plus all other tabs formatted with CRM data!
+                    This script builds the primary <strong>"🛎️ FRONT DESK DASHBOARD"</strong> tab (instant lookup across all <strong>{customers.length.toLocaleString()}</strong> patients) plus all formatted CRM tabs: Customers &amp; RFM, Bookings ({bookings.length}), Partners, CAC, Practitioners, Procedures, and OKRs &amp; Quarterly Goals.
                   </p>
                 </div>
                 <button
@@ -292,10 +360,10 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
 
                 <div className="p-3 rounded-xl border border-inherit space-y-1 bg-black/5 dark:bg-white/5">
                   <strong className="text-[#e6b000] block font-bold">
-                    Step 4: Paste Code and Click Run
+                    Step 4: Paste, Run &amp; Deploy Web App (2-Way Sync)
                   </strong>
                   <p className="opacity-80">
-                    Delete any existing template code, paste the copied code, save (Ctrl+S), and click <strong>Run</strong> on the function <code>buildWelltheraCompleteSpreadsheet</code>.
+                    Paste the copied code, save (Ctrl+S), and run <code>buildWelltheraCompleteSpreadsheet</code>. Then click <strong>Deploy &gt; New deployment</strong> (or <strong>Manage deployments &gt; Edit &gt; New version</strong>) → <strong>Web app</strong> → <strong>Execute as: Me</strong> → <strong>Who has access: Anyone</strong> → copy the <code>/exec</code> URL into the Connect tab.
                   </p>
                 </div>
               </div>
@@ -351,32 +419,117 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <label className="font-semibold block">
-                    Apps Script Webhook URL (Optional - 2-Way Live Sync):
+                    Apps Script Web App URL (2-Way Live Sync — must end in <code>/exec</code>):
                   </label>
-                  <span className="text-[10px] font-bold text-[#686e4a] dark:text-[#c7ccaa]">
-                    No OAuth login required
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {appsScriptInput.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAppsScriptInput('');
+                          setSaveError(null);
+                          setTestResult(null);
+                        }}
+                        className="text-[10px] font-semibold text-red-500 hover:underline cursor-pointer"
+                      >
+                        Clear URL
+                      </button>
+                    )}
+                    <span className="text-[10px] font-bold text-[#686e4a] dark:text-[#c7ccaa]">
+                      No OAuth login required
+                    </span>
+                  </div>
                 </div>
-                <input
-                  type="text"
-                  placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-                  value={appsScriptInput}
-                  onChange={(e) => setAppsScriptInput(e.target.value)}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono transition-colors focus:outline-hidden focus:ring-1 focus:ring-[#686e4a] ${
-                    isDarkMode
-                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
-                      : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
-                  }`}
-                />
-                <span className="text-[10px] opacity-70 block">
-                  To generate: in Apps Script click <em>Deploy &gt; New deployment &gt; Web app &gt; Who has access: Anyone</em>.
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                    value={appsScriptInput}
+                    onChange={(e) => {
+                      setAppsScriptInput(e.target.value);
+                      setSaveError(null);
+                      setTestResult(null);
+                    }}
+                    className={`flex-1 px-3.5 py-2.5 rounded-xl border text-xs font-mono transition-colors focus:outline-hidden focus:ring-1 focus:ring-[#686e4a] ${
+                      webhookValidation && !webhookValidation.valid
+                        ? 'border-red-400 bg-red-50/30 dark:bg-red-950/20 text-inherit'
+                        : isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    disabled={!appsScriptInput.trim() || isTestingWebhook}
+                    onClick={handleTestWebhook}
+                    className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50 ${
+                      isDarkMode
+                        ? 'bg-[#1c2015] border-[#343a27] text-[#e6b000] hover:bg-[#252a1c]'
+                        : 'bg-[#edf0e6] border-[#bcc2a4] text-[#52573a] hover:bg-[#dfe4d3]'
+                    }`}
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isTestingWebhook ? 'animate-spin' : ''}`} />
+                    <span>{isTestingWebhook ? 'Testing...' : 'Test GET + POST'}</span>
+                  </button>
+                </div>
+
+                {/* Live URL Validation Warning */}
+                {webhookValidation && !webhookValidation.valid && (
+                  <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-[11px] flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                    <span>{webhookValidation.error}</span>
+                  </div>
+                )}
+
+                {webhookValidation && webhookValidation.valid && !testResult && (
+                  <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Valid Apps Script Web App URL format. Click "Test GET + POST" to verify 2-way sync.</span>
+                  </div>
+                )}
+
+                {/* Live Connection Test Result */}
+                {testResult && (
+                  <div
+                    className={`p-3 rounded-xl border text-[11px] space-y-1.5 ${
+                      testResult.success
+                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                        : 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 font-bold">
+                      <span>{testResult.getOk ? '✅ Pull (GET): OK' : '❌ Pull (GET): Failed'}</span>
+                      <span>{testResult.postOk ? '✅ Push (POST): OK' : '❌ Push (POST): Failed'}</span>
+                    </div>
+                    <p className="leading-relaxed">{testResult.message}</p>
+                    {!testResult.postOk && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('appscript')}
+                        className="mt-1 underline font-bold cursor-pointer"
+                      >
+                        → Open Apps Script tab to copy the v5.0 script
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <span className="text-[10px] opacity-75 block leading-relaxed">
+                  <strong>Getting HTTP 405?</strong> Make sure you paste the <strong>v5.0 Apps Script</strong> in Google Sheets (<em>Extensions &gt; Apps Script</em>), then click <em>Deploy &gt; Manage deployments &gt; Edit (pencil) &gt; Version: New version &gt; Deploy</em> with <strong>Execute as: Me</strong> and <strong>Who has access: Anyone</strong>, and paste the <code>/exec</code> URL above.
                 </span>
                 <div className="p-2.5 rounded-lg bg-black/5 dark:bg-white/5 border border-inherit text-[11px] flex items-center justify-between gap-2">
                   <span>In <strong>Vercel</strong>, add as an Environment Variable: <code className="font-mono font-bold text-[#686e4a] dark:text-[#c7ccaa]">VITE_APPS_SCRIPT_WEBHOOK_URL</code></span>
                 </div>
               </div>
+
+              {saveError && (
+                <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800 text-red-800 dark:text-red-200 text-xs font-semibold flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{saveError}</span>
+                </div>
+              )}
 
               {saveFeedback && (
                 <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2">
@@ -433,10 +586,10 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
                 <div className="p-4 rounded-xl border border-inherit space-y-2 bg-black/5 dark:bg-white/5 flex flex-col justify-between">
                   <div>
                     <strong className="block font-bold text-sm">
-                      Download All 4 Formatted CSV Files
+                      Download All 7 Formatted CSV Files
                     </strong>
                     <p className="text-[11px] opacity-75 mt-1">
-                      Generates 4 individual spreadsheets (Customers RFM, Partners ROI, Daily Bookings, and CAC Marketing).
+                      Generates 7 individual CSVs: Customers ({customers.length.toLocaleString()}), Partners, Bookings ({bookings.length}), CAC, Practitioners, Procedures, and OKRs.
                     </p>
                   </div>
                   <button
@@ -464,6 +617,9 @@ export const GoogleSheetsSetupModal: React.FC<GoogleSheetsSetupModalProps> = ({
                         partners,
                         bookings,
                         cacChannels,
+                        practitioners,
+                        procedures,
+                        okrPlans,
                       })
                     }
                     className={`w-full px-4 py-2 rounded-lg font-semibold flex items-center justify-center gap-2 border transition-colors cursor-pointer ${

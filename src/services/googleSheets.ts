@@ -1,5 +1,5 @@
-import { Customer, Partner, ServiceBooking, CacChannelSpend, Practitioner, ClinicProcedure } from '../types';
-import { initialPractitioners, initialProcedures } from '../data/initialData';
+import { Customer, Partner, ServiceBooking, CacChannelSpend, Practitioner, ClinicProcedure, QuarterlyOkrPlan } from '../types';
+import { initialPractitioners, initialProcedures, initialOkrPlans } from '../data/initialData';
 
 export interface WelltheraDataPackage {
   customers: Customer[];
@@ -8,6 +8,7 @@ export interface WelltheraDataPackage {
   cacChannels: CacChannelSpend[];
   practitioners?: Practitioner[];
   procedures?: ClinicProcedure[];
+  okrPlans?: QuarterlyOkrPlan[];
 }
 
 export const DEFAULT_TARGET_DRIVE_FOLDER_ID = '1dPwBTrwTASN7gcuPFAoaPaY0y4SHvxMF';
@@ -73,6 +74,13 @@ export async function createWelltheraGoogleSheet(
           title: 'Procedures & Treatments',
           gridProperties: { frozenRowCount: 1 },
           tabColor: { red: 0.06, green: 0.46, blue: 0.43 }, // Teal
+        },
+      },
+      {
+        properties: {
+          title: 'OKRs & Quarterly Goals',
+          gridProperties: { frozenRowCount: 1 },
+          tabColor: { red: 0.72, green: 0.52, blue: 0.04 }, // Amber Gold
         },
       },
     ],
@@ -335,6 +343,91 @@ export async function syncDataToExistingSheet(
     proc.description || '',
   ]);
 
+  // OKRs & Quarterly Goals Rows
+  const okrHeaders = [
+    'Quarter',
+    'Year',
+    'Revenue Goal (CAD)',
+    'CAC Benchmark (CAD)',
+    'LTV:CAC Target',
+    'New Patients Target',
+    'Retention Target (%)',
+    'Partner Share Target (%)',
+    'Objective',
+    'Owner',
+    'Key Result',
+    'Current Value',
+    'Target Value',
+    'Unit',
+    'Status',
+  ];
+
+  const activeOkrs = data.okrPlans && data.okrPlans.length > 0 ? data.okrPlans : initialOkrPlans;
+  const okrRows: (string | number)[][] = [];
+  activeOkrs.forEach((plan) => {
+    if (!plan.objectives || plan.objectives.length === 0) {
+      okrRows.push([
+        plan.quarter,
+        plan.year,
+        plan.revenueGoalCAD,
+        plan.cacBenchmarkCAD,
+        plan.ltvCacTargetRatio,
+        plan.newPatientsTarget,
+        plan.retentionTargetRate,
+        plan.partnerRevenueShareTarget,
+        '',
+        '',
+        '',
+        0,
+        0,
+        '',
+        'on_track',
+      ]);
+      return;
+    }
+    plan.objectives.forEach((obj) => {
+      if (!obj.keyResults || obj.keyResults.length === 0) {
+        okrRows.push([
+          plan.quarter,
+          plan.year,
+          plan.revenueGoalCAD,
+          plan.cacBenchmarkCAD,
+          plan.ltvCacTargetRatio,
+          plan.newPatientsTarget,
+          plan.retentionTargetRate,
+          plan.partnerRevenueShareTarget,
+          obj.title,
+          obj.owner,
+          '',
+          0,
+          0,
+          '',
+          'on_track',
+        ]);
+        return;
+      }
+      obj.keyResults.forEach((kr) => {
+        okrRows.push([
+          plan.quarter,
+          plan.year,
+          plan.revenueGoalCAD,
+          plan.cacBenchmarkCAD,
+          plan.ltvCacTargetRatio,
+          plan.newPatientsTarget,
+          plan.retentionTargetRate,
+          plan.partnerRevenueShareTarget,
+          obj.title,
+          obj.owner,
+          kr.title,
+          kr.currentValue,
+          kr.targetValue,
+          kr.unit || '',
+          kr.status,
+        ]);
+      });
+    });
+  });
+
   // Instructions & Staff Operating Procedure (SOP) Tab Content
   const instructionRows = [
     ['WELLTHERA INTEGRATED HEALTH — CLINIC STAFF OPERATING MANUAL & SPREADSHEET GUIDE'],
@@ -350,21 +443,22 @@ export async function syncDataToExistingSheet(
     ['CAC & Channel Costs', 'Manager / Marketing', 'Monthly at month-end review', 'Enter monthly ad spends (Google, Meta, Retainers) and new patients acquired.'],
     ['Practitioners & Team', 'Clinic Manager / HR', 'When practitioner joins or updates hours', 'Manage licensed RMTs, Acupuncturist, Psychotherapist, Nurse Injector.'],
     ['Procedures & Treatments', 'Clinic Director / Clinical Lead', 'When updating pricing or services', 'Define clinical catalog, treatment lengths, typical copays and insurers.'],
+    ['OKRs & Quarterly Goals', 'Executive Team / Director', 'Quarterly planning & review', 'Track quarterly revenue goals, CAC benchmarks, LTV:CAC targets, and key results.'],
     [''],
     ['2. HOW TO LOG AN APPOINTMENT / FRONT DESK STEP-BY-STEP'],
     ['Step 1', 'Patient Check-in', 'Verify if patient is registered in "Customers & RFM". If brand new, add them first.'],
-    ['Step 2', 'Ask Referral Source', 'Ask: "Were you referred by a doctor, gym, or coach?" Record their code (e.g. CFIT-APEX).'],
+    ['Step 2', 'Ask Referral Source', 'Ask: "How did you hear about Wellthera?" Record their source (e.g. GOOGLE, META, DIRECT, or a partner code).'],
     ['Step 3', 'Checkout & Payment', 'Go to "Services & Bookings Log". Add row at bottom: Booking Date, Service, Clinician, Total CAD.'],
     ['Step 4', 'Insurance Direct-Billing', 'Enter amount covered in "Direct Insurance Billed (CAD)" and copay in "Patient Out-of-Pocket (CAD)".'],
     ['Step 5', 'Auto-Sync to Dashboard', 'Open Dashboard > Google Sheets Tracker > Click "Sync to Sheet" to refresh live analytics.'],
     [''],
-    ['3. VALID PARTNER REFERRAL CODES'],
-    ['Referral Code', 'Partner Clinic / Business Name', 'Agreement Type', 'Commission Value'],
-    ['CFIT-APEX', 'Barrie CrossFit Apex', 'Revenue Share', '15% on booking value'],
-    ['LAKE-PHYS', 'Lakeview Physiotherapy', 'Cross-Referral', '12% on booking value'],
-    ['INNIS-PELV', 'Innisfil Pelvic Health', 'Flat Referral', '$25 flat per booking'],
-    ['BARRIE-CHIR', 'Barrie Central Chiropractic', 'Revenue Share', '10% on booking value'],
-    ['DIRECT', 'Direct / Walk-in / Organic Website', 'Organic', '$0 (No partner commission)'],
+    ['3. ACTIVE ACQUISITION CHANNELS & PARTNER CODES'],
+    ['Referral Code', 'Partner / Channel Name', 'Category', 'Commission / Notes'],
+    ['DIRECT', 'No partner', 'Direct / No Partner', '$0 (Direct / Walk-in / Unattributed)'],
+    ['META', 'Meta', 'Paid Social (Meta)', 'Instagram & Facebook acquisition tracking'],
+    ['GOOGLE', 'Google', 'Paid & Organic Search (Google)', 'Google Search & Business Profile tracking'],
+    ['CLIENT-REF', 'Existing Wellthera Client', 'Client Referral', 'Word-of-mouth referral from existing Wellthera patient'],
+    ['PARTNER', 'Wellthera Partners', 'Clinic Referral Partner', 'General clinic & local business referral partner'],
     [''],
     ['4. ACCEPTED INSURANCE PROVIDERS'],
     ['Insurance Provider (Type Exactly)', 'Direct-Billing Protocol'],
@@ -377,7 +471,7 @@ export async function syncDataToExistingSheet(
     [''],
     ['5. GOLDEN RULES TO PREVENT DATA CORRUPTION'],
     ['Rule 1', 'DO NOT delete existing rows or alter column header names.'],
-    ['Rule 2', 'Use date format YYYY-MM-DD (e.g. 2026-10-08).'],
+    ['Rule 2', 'Use date format YYYY-MM-DD (e.g. 2026-11-22).'],
     ['Rule 3', 'Enter prices as plain numbers without dollar signs (e.g. 150 instead of $150).'],
     ['Rule 4', 'DO NOT touch calculated RFM scores (R-Score, F-Score, M-Score, Segment) — they are calculated automatically.'],
   ];
@@ -413,8 +507,62 @@ export async function syncDataToExistingSheet(
         range: "'Procedures & Treatments'!A1",
         values: [procedureHeaders, ...procedureRows],
       },
+      {
+        range: "'OKRs & Quarterly Goals'!A1",
+        values: [okrHeaders, ...okrRows],
+      },
     ],
   };
+
+  // Ensure all required tabs exist on the target spreadsheet before writing values
+  const requiredTabs = [
+    '📋 INSTRUCTIONS & STAFF GUIDE',
+    'Customers & RFM',
+    'Partners & ROI',
+    'Services & Bookings Log',
+    'CAC & Channel Costs',
+    'Practitioners & Team',
+    'Procedures & Treatments',
+    'OKRs & Quarterly Goals',
+  ];
+
+  try {
+    const metaRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    if (metaRes.ok) {
+      const metaJson = await metaRes.json();
+      const existingTitles = new Set<string>(
+        (metaJson.sheets || []).map((s: any) => s?.properties?.title).filter(Boolean)
+      );
+      const missingTabs = requiredTabs.filter((title) => !existingTitles.has(title));
+      if (missingTabs.length > 0) {
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            requests: missingTabs.map((title) => ({
+              addSheet: {
+                properties: {
+                  title,
+                  gridProperties: { frozenRowCount: 1 },
+                },
+              },
+            })),
+          }),
+        });
+      }
+    }
+  } catch (metaErr) {
+    console.warn('Sheet tab check note:', metaErr);
+  }
 
   const updateRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
@@ -453,18 +601,138 @@ export function parseSpreadsheetIdFromInput(input: string): string | null {
 }
 
 /**
+/**
+ * Validates and normalizes a Google Apps Script Web App deployment URL.
+ * Catches common mistakes that cause HTTP 405 (e.g., pasting a Google Sheet URL,
+ * Apps Script editor URL, /dev URL, or URL missing https://).
+ */
+export function validateAppsScriptUrl(rawUrl: string): {
+  valid: boolean;
+  normalizedUrl: string;
+  error?: string;
+} {
+  const trimmed = (rawUrl || '').trim();
+  if (!trimmed) {
+    return {
+      valid: false,
+      normalizedUrl: '',
+      error: 'Apps Script Webhook URL is empty. Paste your deployed Web App URL ending in /exec.',
+    };
+  }
+
+  // Ensure protocol is present so fetch() does not post to the app origin (which returns HTTP 405)
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  if (withProtocol.includes('docs.google.com/spreadsheets')) {
+    return {
+      valid: false,
+      normalizedUrl: withProtocol,
+      error:
+        'You pasted a Google Sheet URL into the Webhook field. Open Extensions > Apps Script > Deploy > New deployment > Web app and copy the URL ending in /exec.',
+    };
+  }
+
+  if (withProtocol.includes('script.google.com/home/projects') || withProtocol.endsWith('/edit')) {
+    return {
+      valid: false,
+      normalizedUrl: withProtocol,
+      error:
+        'You pasted the Apps Script Editor link instead of the deployed Web App URL. Click Deploy > New deployment > Web app and copy the URL ending in /exec.',
+    };
+  }
+
+  if (withProtocol.includes('script.googleusercontent.com')) {
+    return {
+      valid: false,
+      normalizedUrl: withProtocol,
+      error:
+        'You pasted a temporary redirect URL. Use the permanent Web App URL starting with https://script.google.com/macros/s/.../exec.',
+    };
+  }
+
+  if (/\/dev(\?.*)?$/i.test(withProtocol)) {
+    return {
+      valid: false,
+      normalizedUrl: withProtocol,
+      error:
+        'Test deployment URLs ending in /dev cannot receive external POST syncs. Use the production Web App URL ending in /exec.',
+    };
+  }
+
+  // Strip /u/0/ user index segment if present (causes cross-origin auth redirects)
+  const normalizedUrl = withProtocol.replace(/\/macros\/u\/\d+\/s\//i, '/macros/s/');
+
+  const isStandardExec = /^https:\/\/script\.google\.com\/macros\/s\/[a-zA-Z0-9_-]+\/exec(\?.*)?$/i.test(
+    normalizedUrl
+  );
+  if (!isStandardExec) {
+    return {
+      valid: false,
+      normalizedUrl,
+      error:
+        'Invalid Apps Script Web App URL format. It must look like: https://script.google.com/macros/s/AKfycb.../exec',
+    };
+  }
+
+  return { valid: true, normalizedUrl };
+}
+
+/**
+ * Safely parses JSON from an Apps Script HTTP response and provides clear guidance
+ * when Google returns an HTML login/error page or HTTP 405.
+ */
+async function parseAppsScriptResponse(response: Response, method: 'GET' | 'POST'): Promise<any> {
+  if (response.status === 405) {
+    throw new Error(
+      `Apps Script returned HTTP 405 (Method Not Allowed) on ${method}. Open your Google Sheet > Extensions > Apps Script, paste the latest v5.0 script (which includes doPost), then click Deploy > Manage deployments > Edit (pencil) > Version: New version > Deploy (Execute as: Me, Who has access: Anyone).`
+    );
+  }
+
+  const rawText = await response.text();
+  const trimmedText = rawText.trim();
+
+  if (trimmedText.toLowerCase().startsWith('<!doctype') || trimmedText.toLowerCase().startsWith('<html')) {
+    if (trimmedText.includes('doPost') || trimmedText.includes('Script function not found')) {
+      throw new Error(
+        'Your deployed Apps Script is missing doPost(). Paste the v5.0 Apps Script and redeploy as a New version (Deploy > Manage deployments > Edit > New version).'
+      );
+    }
+    throw new Error(
+      'Google Apps Script returned an HTML login/access page instead of JSON. In Apps Script, open Deploy > Manage deployments > set "Execute as: Me" and "Who has access: Anyone".'
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(`Apps Script responded with status ${response.status}${trimmedText ? `: ${trimmedText.slice(0, 140)}` : ''}`);
+  }
+
+  try {
+    return JSON.parse(trimmedText);
+  } catch {
+    throw new Error('Apps Script returned a non-JSON response. Please redeploy the v5.0 Apps Script Web App.');
+  }
+}
+
+/**
  * Syncs dashboard data directly to Google Sheets via Google Apps Script Web App
- * This bypasses OAuth limitations and token expiry!
+ * Uses CORS-safe text/plain POST with redirect:'follow' and clear 405/access diagnostics.
  */
 export async function syncDataViaAppsScript(
   webAppUrl: string,
   data: WelltheraDataPackage
 ): Promise<{ success: boolean; message: string }> {
+  const validation = validateAppsScriptUrl(webAppUrl);
+  if (!validation.valid) {
+    throw new Error(validation.error || 'Invalid Apps Script Webhook URL.');
+  }
+
   try {
-    const response = await fetch(webAppUrl, {
+    const response = await fetch(validation.normalizedUrl, {
       method: 'POST',
+      mode: 'cors',
+      redirect: 'follow',
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8', // text/plain prevents CORS preflight in Google Apps Script
+        'Content-Type': 'text/plain;charset=utf-8', // text/plain prevents CORS preflight OPTIONS in Google Apps Script
       },
       body: JSON.stringify({
         action: 'fullSync',
@@ -472,18 +740,18 @@ export async function syncDataViaAppsScript(
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Apps Script responded with status ${response.status}`);
+    const resJson = await parseAppsScriptResponse(response, 'POST');
+    if (resJson.status === 'error') {
+      throw new Error(resJson.message || 'Apps Script reported an error during sync.');
     }
 
-    const resJson = await response.json();
     return {
       success: resJson.status === 'success',
       message: resJson.message || 'Data successfully synchronized with Google Sheets via Apps Script!',
     };
   } catch (err: any) {
     console.error('Apps Script Sync Error:', err);
-    throw new Error(`Failed to sync via Apps Script: ${err.message || 'Network error or invalid URL'}`);
+    throw new Error(err.message || 'Failed to sync via Apps Script: Network error or invalid URL');
   }
 }
 
@@ -503,20 +771,26 @@ export async function fetchSheetDataViaAppsScript(webAppUrl: string): Promise<{
   timestamp?: string;
   message?: string;
 }> {
+  const validation = validateAppsScriptUrl(webAppUrl);
+  if (!validation.valid) {
+    return {
+      success: false,
+      message: validation.error || 'Invalid Apps Script Webhook URL.',
+    };
+  }
+
   try {
-    const fetchUrl = webAppUrl.includes('?') 
-      ? `${webAppUrl}&action=getData&t=${Date.now()}`
-      : `${webAppUrl}?action=getData&t=${Date.now()}`;
-      
+    const fetchUrl = validation.normalizedUrl.includes('?')
+      ? `${validation.normalizedUrl}&action=getData&t=${Date.now()}`
+      : `${validation.normalizedUrl}?action=getData&t=${Date.now()}`;
+
     const response = await fetch(fetchUrl, {
       method: 'GET',
+      mode: 'cors',
+      redirect: 'follow',
     });
 
-    if (!response.ok) {
-      throw new Error(`Apps Script responded with status ${response.status}`);
-    }
-
-    const resJson = await response.json();
+    const resJson = await parseAppsScriptResponse(response, 'GET');
     if (resJson.status === 'success' || resJson.customers || resJson.partners) {
       const customers = resJson.customers || [];
       const partners = resJson.partners || [];
@@ -959,30 +1233,84 @@ export async function pullLatestDataFromSpreadsheet(
 }
 
 /**
- * Checks connection health of Google Apps Script Web App
+ * Checks 2-way connection health (GET pull + POST push) of Google Apps Script Web App
  */
 export async function testAppsScriptConnection(
   webAppUrl: string
-): Promise<{ success: boolean; message: string; details?: any }> {
-  try {
-    const response = await fetch(webAppUrl, {
-      method: 'GET',
-    });
-    if (!response.ok) {
-      throw new Error(`Status ${response.status}`);
-    }
-    const resJson = await response.json();
+): Promise<{
+  success: boolean;
+  getOk?: boolean;
+  postOk?: boolean;
+  message: string;
+  details?: any;
+}> {
+  const validation = validateAppsScriptUrl(webAppUrl);
+  if (!validation.valid) {
     return {
-      success: resJson.status === 'success',
-      message: 'Connection to Google Apps Script established successfully!',
-      details: resJson,
+      success: false,
+      getOk: false,
+      postOk: false,
+      message: validation.error || 'Invalid Apps Script URL.',
     };
+  }
+
+  let getOk = false;
+  let postOk = false;
+  let getDetails: any = null;
+  let postError = '';
+
+  // 1. Test GET (Pull from Sheet)
+  try {
+    const pingGetUrl = validation.normalizedUrl.includes('?')
+      ? `${validation.normalizedUrl}&action=ping&t=${Date.now()}`
+      : `${validation.normalizedUrl}?action=ping&t=${Date.now()}`;
+    const getRes = await fetch(pingGetUrl, { method: 'GET', mode: 'cors', redirect: 'follow' });
+    getDetails = await parseAppsScriptResponse(getRes, 'GET');
+    getOk = getDetails?.status === 'success' || Array.isArray(getDetails?.customers);
   } catch (err: any) {
     return {
       success: false,
-      message: `Could not connect to Apps Script: ${err.message}`,
+      getOk: false,
+      postOk: false,
+      message: `GET (Pull) check failed: ${err.message}`,
     };
   }
+
+  // 2. Test POST (Sync / Push to Sheet)
+  try {
+    const postRes = await fetch(validation.normalizedUrl, {
+      method: 'POST',
+      mode: 'cors',
+      redirect: 'follow',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify({ action: 'ping' }),
+    });
+    const postJson = await parseAppsScriptResponse(postRes, 'POST');
+    postOk = postJson?.status === 'success';
+  } catch (err: any) {
+    postOk = false;
+    postError = err.message;
+  }
+
+  if (getOk && postOk) {
+    return {
+      success: true,
+      getOk: true,
+      postOk: true,
+      message: '2-Way Sync verified! Both Pull (GET) and Push (POST) to Google Sheets are working.',
+      details: getDetails,
+    };
+  }
+
+  return {
+    success: false,
+    getOk,
+    postOk,
+    message: postError || 'Pull (GET) works, but Push (POST) failed. Please redeploy v5.0 Apps Script as a New version with "Who has access: Anyone".',
+    details: getDetails,
+  };
 }
 
 // Client-side CSV export generator for instant download / backup

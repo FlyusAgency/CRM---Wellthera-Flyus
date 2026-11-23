@@ -53,7 +53,7 @@ const SEGMENT_DEFINITIONS: Record<
   },
   'Potential Loyalists': {
     title: 'Potential Loyalists',
-    description: 'Recent new patients referred by partners (Lakeview Physio, Crossfit Apex) with multiple bookings.',
+    description: 'Recent new patients acquired via Google, Meta, or clinic referral partners with multiple bookings.',
     actionStrategy: 'Offer cross-service discovery voucher (e.g., try Acupuncture or Facial MLD after RMT).',
     badgeColor: 'bg-[#edf0e6] dark:bg-[#686e4a]/15 text-[#686e4a] dark:text-[#c7ccaa] border-[#bcc2a4]',
     bgAccent: 'bg-[#edf0e6] dark:bg-[#686e4a]/10',

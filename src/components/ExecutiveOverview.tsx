@@ -34,7 +34,9 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
 }) => {
   const totalRevenue = bookings.reduce((acc, b) => acc + b.priceCAD, 0);
   const totalInsurance = bookings.reduce((acc, b) => acc + b.insuranceBilledCAD, 0);
-  const referralPartners = partners.filter((p) => p.id !== 'p-8');
+  const referralPartners = partners.filter(
+    (p) => p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct'
+  );
   const partnerGross = referralPartners.reduce((acc, p) => acc + p.totalRevenueCAD, 0);
   const partnerCommissions = referralPartners.reduce((acc, p) => acc + p.totalCommissionPaidCAD, 0);
   const partnerRetainers = referralPartners.reduce((acc, p) => acc + p.monthlyRetainerCAD * 6, 0);

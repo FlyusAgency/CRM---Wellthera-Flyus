@@ -9,46 +9,150 @@ import {
   CheckCircle,
   ChevronRight,
   Sparkles,
+  X,
+  Plus,
 } from 'lucide-react';
-import { Partner, Customer, ServiceBooking } from '../types';
+import { Partner, PartnerCategory, Customer, ServiceBooking } from '../types';
 
 interface PartnerRoiDashboardProps {
   partners: Partner[];
   customers: Customer[];
   bookings: ServiceBooking[];
   onSelectPartnerFilter?: (partnerId: string) => void;
+  onAddNewPartner?: (partner: Partner) => void;
   onOpenAddPartnerModal?: () => void;
   isDarkMode?: boolean;
 }
+
+const isNoPartnerChannel = (id?: string) =>
+  !id || id === 'no-partner' || id === 'p-8' || id === 'direct';
 
 export const PartnerRoiDashboard: React.FC<PartnerRoiDashboardProps> = ({
   partners,
   customers,
   bookings,
   onSelectPartnerFilter,
+  onAddNewPartner,
   onOpenAddPartnerModal,
   isDarkMode = false,
 }) => {
   const [selectedPartnerDetail, setSelectedPartnerDetail] = useState<Partner | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [createdBanner, setCreatedBanner] = useState<string | null>(null);
 
-  // Filter out the organic benchmark for partner-only ROI calculation
-  const referralPartners = partners.filter((p) => p.id !== 'p-8');
+  // Add Partner Modal Form State
+  const [partnerName, setPartnerName] = useState('');
+  const [partnerCategory, setPartnerCategory] = useState<PartnerCategory>('Fitness & CrossFit');
+  const [partnerContact, setPartnerContact] = useState('');
+  const [partnerEmail, setPartnerEmail] = useState('');
+  const [partnerPhone, setPartnerPhone] = useState('');
+  const [partnerCode, setPartnerCode] = useState('');
+  const [partnerCommType, setPartnerCommType] = useState<Partner['commissionType']>('Percentage');
+  const [partnerCommVal, setPartnerCommVal] = useState<number>(10);
+  const [partnerRetainer, setPartnerRetainer] = useState<number>(0);
+
+  const handleSubmitNewPartner = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = partnerName.trim();
+    if (!trimmedName || !onAddNewPartner) return;
+
+    const slug = trimmedName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 20);
+    const id = `p-${slug || 'partner'}-${Date.now().toString().slice(-4)}`;
+    const autoCode =
+      partnerCode.trim().toUpperCase() ||
+      trimmedName
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .slice(0, 6)
+        .toUpperCase() + '-REF';
+
+    const newPartner: Partner = {
+      id,
+      name: trimmedName,
+      category: partnerCategory,
+      contactPerson: partnerContact.trim() || 'Clinic Partner Contact',
+      email:
+        partnerEmail.trim() ||
+        `contact@${trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'partner'}.ca`,
+      phone: partnerPhone.trim() || '(705) 555-0100',
+      commissionType: partnerCommType,
+      commissionValue: Number.isFinite(Number(partnerCommVal)) ? Number(partnerCommVal) : 0,
+      referralCode: autoCode,
+      monthlyRetainerCAD: Number.isFinite(Number(partnerRetainer)) ? Number(partnerRetainer) : 0,
+      referredCustomersCount: 0,
+      activeCustomersCount: 0,
+      totalBookingsCount: 0,
+      totalRevenueCAD: 0,
+      totalCommissionPaidCAD: 0,
+      netRevenueCAD: 0,
+      roiPercent: 0,
+      averageCustomerSpendCAD: 0,
+      status: 'Active',
+    };
+
+    onAddNewPartner(newPartner);
+    setCreatedBanner(`Partner "${trimmedName}" added to the registry (Code: ${autoCode}).`);
+    setPartnerName('');
+    setPartnerContact('');
+    setPartnerEmail('');
+    setPartnerPhone('');
+    setPartnerCode('');
+    setPartnerCommVal(10);
+    setPartnerRetainer(0);
+    setIsAddModalOpen(false);
+    setTimeout(() => setCreatedBanner(null), 6000);
+  };
+
+  // Filter out No partner / direct channel for partner-only ROI calculation
+  const referralPartners = partners.filter((p) => !isNoPartnerChannel(p.id));
 
   // Compute aggregates
+  const totalClinicGross = partners.reduce((acc, p) => acc + p.totalRevenueCAD, 0);
   const totalPartnerGross = referralPartners.reduce((acc, p) => acc + p.totalRevenueCAD, 0);
+  const partnerShareOfClinic =
+    totalClinicGross > 0 ? ((totalPartnerGross / totalClinicGross) * 100).toFixed(1) : '0.0';
   const totalPartnerCommissions = referralPartners.reduce((acc, p) => acc + p.totalCommissionPaidCAD, 0);
   const totalRetainers = referralPartners.reduce((acc, p) => acc + p.monthlyRetainerCAD * 6, 0);
   const totalPartnerCosts = totalPartnerCommissions + totalRetainers;
   const netPartnerRevenue = totalPartnerGross - totalPartnerCosts;
-  const blendedRoi = totalPartnerCosts > 0 ? (netPartnerRevenue / totalPartnerCosts) * 100 : 0;
+  const blendedRoi =
+    totalPartnerCosts > 0
+      ? (netPartnerRevenue / totalPartnerCosts) * 100
+      : totalPartnerGross > 0
+      ? 100
+      : 0;
   const totalReferralPatients = referralPartners.reduce((acc, p) => acc + p.referredCustomersCount, 0);
 
   // Find top partner
-  const topPartner = [...referralPartners].sort((a, b) => b.roiPercent - a.roiPercent)[0];
-  const maxRevenue = Math.max(...referralPartners.map((p) => p.totalRevenueCAD), 1);
+  const topPartner = [...referralPartners].sort((a, b) => b.totalRevenueCAD - a.totalRevenueCAD)[0];
+  const maxRevenue = Math.max(...partners.map((p) => p.totalRevenueCAD), 1);
 
   return (
     <div className="space-y-6">
+      {createdBanner && (
+        <div
+          className={`rounded-xl border px-4 py-3 text-xs font-semibold flex items-center justify-between gap-2 ${
+            isDarkMode
+              ? 'bg-[#686e4a]/20 border-[#686e4a]/40 text-[#c7ccaa]'
+              : 'bg-[#edf0e6] border-[#bcc2a4] text-[#52573a]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 shrink-0" />
+            <span>{createdBanner}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCreatedBanner(null)}
+            className="opacity-70 hover:opacity-100 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {/* Top Section: Highlights & Quick DAX Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div
@@ -70,7 +174,7 @@ export const PartnerRoiDashboard: React.FC<PartnerRoiDashboardProps> = ({
               ${totalPartnerGross.toLocaleString('en-CA', { maximumFractionDigits: 0 })} CAD
             </div>
             <span className="text-[11px] text-[#686e4a] dark:text-[#aab187] flex items-center gap-1 mt-1 font-semibold">
-              <TrendingUp className="w-3 h-3" /> 74.2% of clinic total
+              <TrendingUp className="w-3 h-3" /> {partnerShareOfClinic}% of clinic total ({totalReferralPatients} patients)
             </span>
           </div>
           <div
@@ -222,12 +326,20 @@ export const PartnerRoiDashboard: React.FC<PartnerRoiDashboardProps> = ({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {onOpenAddPartnerModal && (
+            {(onAddNewPartner || onOpenAddPartnerModal) && (
               <button
-                onClick={onOpenAddPartnerModal}
-                className="px-3.5 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-semibold text-xs rounded-full transition-colors shadow-sm"
+                type="button"
+                onClick={() => {
+                  if (onAddNewPartner) {
+                    setIsAddModalOpen(true);
+                  } else if (onOpenAddPartnerModal) {
+                    onOpenAddPartnerModal();
+                  }
+                }}
+                className="px-3.5 py-1.5 bg-[#686e4a] hover:bg-[#52573a] text-white font-semibold text-xs rounded-full transition-colors shadow-sm flex items-center gap-1 cursor-pointer"
               >
-                + Add Partner
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Partner</span>
               </button>
             )}
           </div>
@@ -257,8 +369,7 @@ export const PartnerRoiDashboard: React.FC<PartnerRoiDashboardProps> = ({
             </thead>
             <tbody className="divide-y divide-inherit">
               {partners.map((partner) => {
-                const totalCost = partner.totalCommissionPaidCAD + partner.monthlyRetainerCAD * 6;
-                const isOrganic = partner.id === 'p-8';
+                const isOrganic = isNoPartnerChannel(partner.id);
                 const revenueBarPercent = ((partner.totalRevenueCAD / maxRevenue) * 100).toFixed(0);
 
                 return (
@@ -473,8 +584,14 @@ export const PartnerRoiDashboard: React.FC<PartnerRoiDashboardProps> = ({
           <div className="space-y-3.5">
             {referralPartners.map((partner) => {
               const totalCost = partner.totalCommissionPaidCAD + partner.monthlyRetainerCAD * 6;
-              const netPct = ((partner.netRevenueCAD / partner.totalRevenueCAD) * 100).toFixed(0);
-              const commPct = ((totalCost / partner.totalRevenueCAD) * 100).toFixed(0);
+              const netPct =
+                partner.totalRevenueCAD > 0
+                  ? ((partner.netRevenueCAD / partner.totalRevenueCAD) * 100).toFixed(0)
+                  : '100';
+              const commPct =
+                partner.totalRevenueCAD > 0
+                  ? ((totalCost / partner.totalRevenueCAD) * 100).toFixed(0)
+                  : '0';
 
               return (
                 <div key={partner.id} className="space-y-1">
@@ -701,6 +818,218 @@ export const PartnerRoiDashboard: React.FC<PartnerRoiDashboardProps> = ({
                 Close Drill-Down
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Partner Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`rounded-2xl max-w-lg w-full p-6 shadow-2xl border max-h-[90vh] overflow-y-auto ${
+              isDarkMode
+                ? 'bg-[#1a1e13] border-[#292e1e] text-[#f9f8f5]'
+                : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-inherit mb-4">
+              <div>
+                <h3 className="font-serif text-xl font-bold">Add Partner or Acquisition Channel</h3>
+                <p className="text-xs opacity-70 mt-0.5">
+                  Register a new referral partner or marketing channel to track patients and ROI.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1.5 rounded-lg opacity-70 hover:opacity-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitNewPartner} className="space-y-3 text-xs">
+              <div>
+                <label className="block mb-1 font-semibold opacity-80">
+                  Partner / Channel Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={partnerName}
+                  onChange={(e) => setPartnerName(e.target.value)}
+                  placeholder="e.g. Barrie Wellness Studio, TikTok Ads, Dr. Smith Clinic"
+                  className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-80">Category *</label>
+                  <select
+                    value={partnerCategory}
+                    onChange={(e) => setPartnerCategory(e.target.value as PartnerCategory)}
+                    className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  >
+                    <option value="Fitness & CrossFit">Fitness & CrossFit</option>
+                    <option value="Physiotherapy & Chiro">Physiotherapy & Chiro</option>
+                    <option value="OB-GYN, Doulas & Pelvic Health">OB-GYN, Doulas & Pelvic Health</option>
+                    <option value="MedSpa & Aesthetics">MedSpa & Aesthetics</option>
+                    <option value="Local Wellness Influencer">Local Wellness Influencer</option>
+                    <option value="Corporate Wellness">Corporate Wellness</option>
+                    <option value="Clinic Referral Partner">Clinic Referral Partner</option>
+                    <option value="Client Referral">Client Referral</option>
+                    <option value="Paid Social (Meta)">Paid Social (Meta)</option>
+                    <option value="Paid & Organic Search (Google)">Paid & Organic Search (Google)</option>
+                    <option value="Direct / No Partner">Direct / No Partner</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block mb-1 font-semibold opacity-80">Referral Code</label>
+                  <input
+                    type="text"
+                    value={partnerCode}
+                    onChange={(e) => setPartnerCode(e.target.value)}
+                    placeholder="Auto-generated if empty"
+                    className={`w-full rounded-lg p-2.5 border uppercase font-mono focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-80">Contact Person</label>
+                  <input
+                    type="text"
+                    value={partnerContact}
+                    onChange={(e) => setPartnerContact(e.target.value)}
+                    placeholder="e.g. Clinic Manager"
+                    className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-80">Contact Email</label>
+                  <input
+                    type="email"
+                    value={partnerEmail}
+                    onChange={(e) => setPartnerEmail(e.target.value)}
+                    placeholder="partner@domain.ca"
+                    className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block mb-1 font-semibold opacity-80">Commission Type</label>
+                  <select
+                    value={partnerCommType}
+                    onChange={(e) => setPartnerCommType(e.target.value as Partner['commissionType'])}
+                    className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  >
+                    <option value="Percentage">Percentage (%)</option>
+                    <option value="FlatPerBooking">Flat per Booking ($)</option>
+                    <option value="CoMarketingRetainer">Retainer / Ad Channel</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-80">
+                    {partnerCommType === 'FlatPerBooking' ? 'Flat Fee (CAD)' : 'Rate (%)'}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={partnerCommVal}
+                    onChange={(e) => setPartnerCommVal(Number(e.target.value))}
+                    className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1 font-semibold opacity-80">Monthly Retainer ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="10"
+                    value={partnerRetainer}
+                    onChange={(e) => setPartnerRetainer(Number(e.target.value))}
+                    className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold opacity-80">Phone (Optional)</label>
+                <input
+                  type="text"
+                  value={partnerPhone}
+                  onChange={(e) => setPartnerPhone(e.target.value)}
+                  placeholder="(705) 555-0100"
+                  className={`w-full rounded-lg p-2.5 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-[#ffffff] border-[#e7e3da] text-[#332e1e]'
+                  }`}
+                />
+              </div>
+
+              <div
+                className={`mt-5 pt-4 border-t flex justify-end gap-2 ${
+                  isDarkMode ? 'border-[#24291c]' : 'border-[#e7e3da]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className={`px-4 py-2 rounded-lg border text-xs font-semibold cursor-pointer ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#a2a992]'
+                      : 'bg-[#f0ede6] border-[#e7e3da] text-[#554e38]'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#686e4a] hover:bg-[#52573a] text-white font-bold rounded-lg shadow-sm cursor-pointer"
+                >
+                  Create Partner
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

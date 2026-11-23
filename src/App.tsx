@@ -74,13 +74,13 @@ export default function App() {
   // Active Tab
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
 
-  // Primary Data State with LocalStorage Persistence & Cache Invalidation
+  // Primary Data State with LocalStorage Persistence & Cache Invalidation (v8: Clean Nov 22, 2026 ClinicSense Export + All 5 Origin/Partner Tags)
   const [customers, setCustomers] = useState<Customer[]>(() => {
     try {
-      const saved = localStorage.getItem('wellthera_customers_v5');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= 500) {
+      const savedV8 = localStorage.getItem('wellthera_customers_v8');
+      if (savedV8) {
+        const parsed = JSON.parse(savedV8);
+        if (Array.isArray(parsed) && parsed.length >= 1000) {
           return parsed;
         }
       }
@@ -92,7 +92,7 @@ export default function App() {
 
   const [partners, setPartners] = useState<Partner[]>(() => {
     try {
-      const saved = localStorage.getItem('wellthera_partners_v5');
+      const saved = localStorage.getItem('wellthera_partners_v8');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -105,7 +105,7 @@ export default function App() {
 
   const [bookings, setBookings] = useState<ServiceBooking[]>(() => {
     try {
-      const saved = localStorage.getItem('wellthera_bookings_v5');
+      const saved = localStorage.getItem('wellthera_bookings_v8');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -147,7 +147,7 @@ export default function App() {
   // Persist datasets to LocalStorage
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_customers_v5', JSON.stringify(customers));
+      localStorage.setItem('wellthera_customers_v8', JSON.stringify(customers));
     } catch (e) {
       console.warn('Failed to persist customers', e);
     }
@@ -155,7 +155,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_partners_v5', JSON.stringify(partners));
+      localStorage.setItem('wellthera_partners_v8', JSON.stringify(partners));
     } catch (e) {
       console.warn('Failed to persist partners', e);
     }
@@ -163,7 +163,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_bookings_v5', JSON.stringify(bookings));
+      localStorage.setItem('wellthera_bookings_v8', JSON.stringify(bookings));
     } catch (e) {
       console.warn('Failed to persist bookings', e);
     }
@@ -222,7 +222,7 @@ export default function App() {
       (envSheetUrl ? parseSpreadsheetIdFromInput(envSheetUrl) : null);
 
     try {
-      const saved = localStorage.getItem('wellthera_sheet_sync_state');
+      const saved = localStorage.getItem('wellthera_sheet_sync_state_v8');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (envWebhookUrl && !parsed.appsScriptUrl) {
@@ -247,16 +247,14 @@ export default function App() {
       lastSyncedAt: null,
       isSyncing: false,
       syncMessage: envWebhookUrl
-        ? 'Webhook configured via environment variable (Vercel).'
-        : envSheetUrl
-        ? 'Google Sheet URL configured via environment variable.'
-        : null,
+        ? 'Webhook configured via environment variable.'
+        : 'Ready to create a clean Google Sheet with all 1,176 ClinicSense patients and 5 Origin/Partner tags.',
     };
   });
 
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_sheet_sync_state', JSON.stringify(syncState));
+      localStorage.setItem('wellthera_sheet_sync_state_v8', JSON.stringify(syncState));
     } catch (e) {
       console.warn('Failed to persist sync state', e);
     }
@@ -273,31 +271,69 @@ export default function App() {
     try {
       const result = await pullLatestDataFromSpreadsheet(syncState, accessToken);
       if (result.success) {
+        const nextCustomers =
+          result.customers && result.customers.length > 0
+            ? result.customers.map((c) => {
+                const { rScore, fScore, mScore, segment } = computeRfmSegment(
+                  c.recencyDays || 15,
+                  c.totalVisits || 1,
+                  c.totalSpendCAD || 0
+                );
+                return {
+                  ...c,
+                  recencyScore: c.recencyScore || rScore,
+                  frequencyScore: c.frequencyScore || fScore,
+                  monetaryScore: c.monetaryScore || mScore,
+                  rfmSegment: c.rfmSegment || segment,
+                };
+              })
+            : customers;
+
         if (result.customers && result.customers.length > 0) {
-          // Recompute RFM for newly added customers
-          const enriched = result.customers.map((c) => {
-            const { rScore, fScore, mScore, segment } = computeRfmSegment(
-              c.recencyDays || 15,
-              c.totalVisits || 1,
-              c.totalSpendCAD || 0
-            );
-            return {
-              ...c,
-              recencyScore: c.recencyScore || rScore,
-              frequencyScore: c.frequencyScore || fScore,
-              monetaryScore: c.monetaryScore || mScore,
-              rfmSegment: c.rfmSegment || segment,
-            };
-          });
-          setCustomers(enriched);
+          setCustomers(nextCustomers);
         }
 
-        if (result.partners && result.partners.length > 0) {
-          setPartners(result.partners);
-        }
-
+        const nextBookings =
+          result.bookings && result.bookings.length > 0 ? result.bookings : bookings;
         if (result.bookings && result.bookings.length > 0) {
-          setBookings(result.bookings);
+          setBookings(nextBookings);
+        }
+
+        // Merge pulled partners with any historical origin/partner tags present on customers or bookings
+        const basePartners =
+          result.partners && result.partners.length > 0 ? [...result.partners] : [...partners];
+        const seenNames = new Set(basePartners.map((p) => p.name.trim().toLowerCase()));
+        const ensureOriginTag = (partnerId?: string, partnerName?: string, referralCode?: string) => {
+          const cleanName = (partnerName || '').trim();
+          if (!cleanName || seenNames.has(cleanName.toLowerCase())) return;
+          seenNames.add(cleanName.toLowerCase());
+          const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          basePartners.push({
+            id: partnerId && !basePartners.some((p) => p.id === partnerId) ? partnerId : `p-${slug}`,
+            name: cleanName,
+            category: 'Clinic Referral Partner',
+            contactPerson: 'Auto-discovered from History',
+            email: 'frontdesk@wellthera.ca',
+            phone: '(705) 730-1000',
+            commissionType: 'Percentage',
+            commissionValue: 0,
+            referralCode: referralCode || slug.toUpperCase().slice(0, 10) || 'REF',
+            monthlyRetainerCAD: 0,
+            referredCustomersCount: 0,
+            activeCustomersCount: 0,
+            totalBookingsCount: 0,
+            totalRevenueCAD: 0,
+            totalCommissionPaidCAD: 0,
+            netRevenueCAD: 0,
+            roiPercent: 0,
+            averageCustomerSpendCAD: 0,
+            status: 'Active',
+          });
+        };
+        for (const c of nextCustomers) ensureOriginTag(c.partnerId, c.partnerName, c.referralCode);
+        for (const b of nextBookings) ensureOriginTag(b.partnerId, b.partnerName);
+        if (result.partners && result.partners.length > 0) {
+          setPartners(recomputePartnerMetrics(basePartners, nextCustomers, nextBookings));
         }
 
         if (result.cacChannels && result.cacChannels.length > 0) {
@@ -335,55 +371,8 @@ export default function App() {
     }
   };
 
-  // Automated synchronization (Vercel Environment Variable or Apps Script URL or Sheet ID)
-  // Automatically pulls new customers, partners and visits logged in the spreadsheet
-  useEffect(() => {
-    if (!syncState.appsScriptUrl && !syncState.sheetId && !syncState.sheetUrl) return;
-
-    let isMounted = true;
-    const fetchLatest = async () => {
-      try {
-        const result = await pullLatestDataFromSpreadsheet(syncState, accessToken);
-        if (result.success && isMounted) {
-          if (result.customers && result.customers.length > 0) {
-            setCustomers(result.customers);
-          }
-          if (result.partners && result.partners.length > 0) {
-            setPartners(result.partners);
-          }
-          if (result.bookings && result.bookings.length > 0) {
-            setBookings(result.bookings);
-          }
-          if (result.cacChannels && result.cacChannels.length > 0) {
-            setCacChannels(result.cacChannels);
-          }
-          if (result.practitioners && result.practitioners.length > 0) {
-            setPractitioners(result.practitioners);
-          }
-          if (result.procedures && result.procedures.length > 0) {
-            setProcedures(result.procedures);
-          }
-          setSyncState((prev) => ({
-            ...prev,
-            lastSyncedAt: new Date().toLocaleTimeString(),
-            syncMessage: result.message,
-          }));
-        }
-      } catch (err) {
-        console.warn('Auto-sync check notice:', err);
-      }
-    };
-
-    // Run on mount
-    fetchLatest();
-
-    // Periodic background sync every 30 seconds
-    const interval = setInterval(fetchLatest, 30000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [syncState.appsScriptUrl, syncState.sheetId, syncState.sheetUrl]);
+  // Note: Pulling from Google Sheets is strictly user-initiated via "Pull from Google Sheet"
+  // so local edits, newly created partners, and ClinicSense imports are never overwritten by stale sheet tabs.
 
   // Lock portal handler (resets gatekeeper session)
   const handleLockPortal = () => {
@@ -461,6 +450,9 @@ export default function App() {
     });
   };
 
+  const isNoPartnerId = (id?: string) =>
+    !id || id === 'no-partner' || id === 'direct' || id === 'p-8';
+
   // Helper to recompute partner metrics dynamically across customers and bookings
   const recomputePartnerMetrics = (
     currentPartners: Partner[],
@@ -468,10 +460,11 @@ export default function App() {
     currentBookings: ServiceBooking[]
   ): Partner[] => {
     return currentPartners.map((partner) => {
+      const partnerIsNoPartner = isNoPartnerId(partner.id);
       // Find all customers referred by this partner
       const referredCusts = currentCustomers.filter((c) => {
-        if (partner.id === 'p-8') {
-          return c.partnerId === 'p-8' || c.partnerId === 'direct' || !c.partnerId;
+        if (partnerIsNoPartner) {
+          return isNoPartnerId(c.partnerId);
         }
         return c.partnerId === partner.id;
       });
@@ -483,8 +476,8 @@ export default function App() {
 
       // Find all bookings linked to this partner
       const partnerBookings = currentBookings.filter((b) => {
-        if (partner.id === 'p-8') {
-          return b.partnerId === 'p-8' || b.partnerId === 'direct' || !b.partnerId;
+        if (partnerIsNoPartner) {
+          return isNoPartnerId(b.partnerId);
         }
         return b.partnerId === partner.id;
       });
@@ -571,7 +564,7 @@ export default function App() {
           partnerName,
           referralCode:
             referralCode ||
-            (partnerId === 'direct'
+            (isNoPartnerId(partnerId)
               ? 'DIRECT'
               : partnerName.split(' ')[0].toUpperCase() + '-REF'),
         };
@@ -652,12 +645,12 @@ export default function App() {
     const nextPartners = partners.filter((p) => p.id !== partnerId);
     const nextCustomers = customers.map((c) =>
       c.partnerId === partnerId
-        ? { ...c, partnerId: 'direct', partnerName: 'Direct / Organic', referralCode: 'DIRECT' }
+        ? { ...c, partnerId: 'no-partner', partnerName: 'No partner', referralCode: 'DIRECT' }
         : c
     );
     const nextBookings = bookings.map((b) =>
       b.partnerId === partnerId
-        ? { ...b, partnerId: 'direct', partnerName: 'Direct / Organic' }
+        ? { ...b, partnerId: 'no-partner', partnerName: 'No partner' }
         : b
     );
     setCustomers(nextCustomers);
@@ -874,15 +867,15 @@ export default function App() {
     return ids;
   }, [customers, filters.selectedRfmSegments]);
 
-  // Helper to check if a partner is selected in slicers (handles both direct/organic IDs and partner IDs)
+  // Helper to check if a partner is selected in slicers (handles both no-partner/direct IDs and partner IDs)
   const isPartnerMatched = (
     partnerId: string | undefined,
     selectedPartnerIds: string[]
   ) => {
     if (selectedPartnerIds.length === 0) return true;
-    const isDirect = !partnerId || partnerId === 'direct' || partnerId === 'p-8';
+    const isDirect = isNoPartnerId(partnerId);
     return selectedPartnerIds.some((id) => {
-      if (id === 'p-8' || id === 'direct') return isDirect;
+      if (isNoPartnerId(id)) return isDirect;
       return id === partnerId;
     });
   };
@@ -1052,9 +1045,9 @@ export default function App() {
     let list = partners;
     if (filters.selectedPartners.length > 0) {
       list = partners.filter((p) => {
-        const isDirect = p.id === 'p-8' || p.id === 'direct';
+        const isDirect = isNoPartnerId(p.id);
         return filters.selectedPartners.some((selId) => {
-          if (selId === 'p-8' || selId === 'direct') return isDirect;
+          if (isNoPartnerId(selId)) return isDirect;
           return selId === p.id;
         });
       });
@@ -1073,8 +1066,7 @@ export default function App() {
         return filters.selectedPartners.includes(partner.id);
       }
       if (
-        (filters.selectedPartners.includes('p-8') ||
-          filters.selectedPartners.includes('direct')) &&
+        filters.selectedPartners.some((id) => isNoPartnerId(id)) &&
         !c.isPartner
       ) {
         return true;
@@ -1169,7 +1161,7 @@ export default function App() {
             partners={filteredPartners}
             customers={filteredCustomers}
             bookings={filteredBookings}
-            onOpenAddPartnerModal={() => setActiveTab('sheet')}
+            onAddNewPartner={handleAddNewPartner}
             isDarkMode={isDarkMode}
           />
         )}
@@ -1206,6 +1198,7 @@ export default function App() {
             cacChannels={cacChannels}
             practitioners={practitioners}
             procedures={procedures}
+            okrPlans={okrPlans}
             syncState={syncState}
             setSyncState={setSyncState}
             accessToken={accessToken}

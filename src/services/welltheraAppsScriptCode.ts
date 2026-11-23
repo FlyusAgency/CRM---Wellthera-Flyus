@@ -6,8 +6,8 @@
  * Version 3.0: Includes interactive "🛎️ FRONT DESK DASHBOARD" as the primary 1st tab!
  */
 
-import { Customer, Partner, ServiceBooking, CacChannelSpend, Practitioner, ClinicProcedure } from '../types';
-import { initialPractitioners, initialProcedures } from '../data/initialData';
+import { Customer, Partner, ServiceBooking, CacChannelSpend, Practitioner, ClinicProcedure, QuarterlyOkrPlan } from '../types';
+import { initialPractitioners, initialProcedures, initialOkrPlans } from '../data/initialData';
 import {
   DEFAULT_TARGET_DRIVE_FOLDER_ID,
   DEFAULT_TARGET_DRIVE_FOLDER_URL,
@@ -19,44 +19,51 @@ export function generateWelltheraAppsScript(
   bookings: ServiceBooking[],
   cacChannels: CacChannelSpend[],
   practitioners: Practitioner[] = initialPractitioners,
-  procedures: ClinicProcedure[] = initialProcedures
+  procedures: ClinicProcedure[] = initialProcedures,
+  okrPlans: QuarterlyOkrPlan[] = initialOkrPlans
 ): string {
-  const customersJson = JSON.stringify(customers, null, 2);
+  const customersJson = JSON.stringify(customers);
   const partnersJson = JSON.stringify(partners, null, 2);
-  const bookingsJson = JSON.stringify(bookings, null, 2);
+  const bookingsJson = JSON.stringify(bookings);
   const cacChannelsJson = JSON.stringify(cacChannels, null, 2);
   const practitionersJson = JSON.stringify(practitioners, null, 2);
   const proceduresJson = JSON.stringify(procedures, null, 2);
+  const okrPlansJson = JSON.stringify(okrPlans, null, 2);
 
   return `/**
  * =========================================================================
  * WELLTHERA INTEGRATED HEALTH — GOOGLE SHEETS SETUP & AUTOMATION
- * Version: 4.0 — WITH PRACTITIONERS, PROCEDURES & FRONT DESK RECEPTION
+ * Version: 5.0 — UPDATED CLINICSENSE DATABASE (${customers.length.toLocaleString()} PATIENTS),
+ * OKRS & QUARTERLY GOALS, PRACTITIONERS, PROCEDURES & FULL 2-WAY SYNC
  *
  * Target Google Drive Folder:
  * ${DEFAULT_TARGET_DRIVE_FOLDER_URL}
  * Drive Folder ID: ${DEFAULT_TARGET_DRIVE_FOLDER_ID}
  *
- * HOW TO USE IN 3 STEPS:
- * 1. Open your blank spreadsheet in Google Sheets.
- * 2. In the top menu, go to: "Extensions" > "Apps Script".
- * 3. Paste this entire code, save (Ctrl+S), select the function "buildWelltheraCompleteSpreadsheet"
- *    and click the "▶ Run" button.
+ * HOW TO USE & ENABLE 2-WAY SYNC (FIXES HTTP 405):
+ * 1. Open your spreadsheet in Google Sheets > "Extensions" > "Apps Script".
+ * 2. Delete existing code, paste this entire script, and Save (Ctrl+S / Cmd+S).
+ * 3. Select "buildWelltheraCompleteSpreadsheet" and click "▶ Run" (once) to build/refresh all tabs.
+ * 4. To enable live 2-way "Sync to Sheet" from the Portal:
+ *    - Click "Deploy" > "New deployment" (or "Manage deployments" > Edit > Version: "New version")
+ *    - Type: "Web app" | Execute as: "Me" | Who has access: "Anyone"
+ *    - Click "Deploy" and copy the Web App URL ending in "/exec" into the Portal!
  *
  * WHAT IT BUILDS AUTOMATICALLY:
- * - 🛎️ FRONT DESK DASHBOARD (Tab 1: Type patient name to search history instantly,
+ * - 🛎️ FRONT DESK DASHBOARD (Tab 1: Type patient name to search history across all ${customers.length.toLocaleString()} patients,
  *   view visits, past spend, and log new appointments with 1 click in the top menu or interactive checkbox!)
- * - 👥 Customers & RFM (Patients, Contact, Insurance, and RFM Segmentation)
- * - 📅 Services & Bookings Log (Detailed Appointment Logs and Copays)
+ * - 👥 Customers & RFM (All ${customers.length.toLocaleString()} ClinicSense Patients, Contact, Insurance, and RFM Segmentation)
+ * - 📅 Services & Bookings Log (Detailed Appointment Logs and Insurance/Copay Splits)
  * - 🤝 Partners & ROI (Referral Partners, Clinics, Gyms, and Commissions)
  * - 💰 CAC & Channel Costs (Acquisition Costs and Marketing Metrics)
  * - 👩‍⚕️ Practitioners & Team (Registered Massage Therapists, Acupuncturist, Psychotherapist, Nurse Injector)
- * - 📋 Procedures & Treatments (Clinic Clinical Catalog, Fees, Durations, and Billing Rates)
+ * - 📋 Procedures & Treatments (Clinical Catalog, Fees, Durations, and Billing Rates)
+ * - 🎯 OKRs & Quarterly Goals (Quarterly Revenue Goals, CAC Benchmarks, LTV:CAC Targets & Key Results)
  * - 📖 INSTRUCTIONS & STAFF GUIDE (Clinic Operating Manual & SOP)
  * =========================================================================
  */
 
-// Data synchronized in real-time from the Wellthera Dashboard
+// Data synchronized in real-time from the Wellthera Portal (2026-11-22 ClinicSense Export)
 const INITIAL_CUSTOMERS = ${customersJson};
 
 const INITIAL_PARTNERS = ${partnersJson};
@@ -69,6 +76,8 @@ const INITIAL_PRACTITIONERS = ${practitionersJson};
 
 const INITIAL_PROCEDURES = ${proceduresJson};
 
+const INITIAL_OKR_PLANS = ${okrPlansJson};
+
 /**
  * Creates interactive menu in Google Sheets top bar upon opening
  */
@@ -78,6 +87,7 @@ function onOpen() {
     .addItem('✅ Log Front Desk Visit (1-Click)', 'logVisitFromFrontDesk')
     .addItem('🧹 Clear Front Desk Form', 'clearFrontDeskForm')
     .addSeparator()
+    .addItem('➕ Add New Partner / Origin Tag', 'addNewPartnerPrompt')
     .addItem('➕ Add New Practitioner', 'addNewPractitionerPrompt')
     .addItem('➕ Add New Service / Treatment', 'addNewProcedurePrompt')
     .addItem('🔄 Refresh Dropdowns from Tabs', 'refreshAllDropdownRules')
@@ -131,10 +141,13 @@ function buildWelltheraCompleteSpreadsheet() {
   // 7. Clinical Procedures & Treatments
   setupProceduresSheet(ss);
 
-  // 8. Refresh dynamic dropdown rules from practitioners and treatments tabs
+  // 8. OKRs & Quarterly Goals
+  setupOkrSheet(ss);
+
+  // 9. Refresh dynamic dropdown rules from practitioners and treatments tabs
   refreshAllDropdownRules();
 
-  // 9. Clinic Operating Manual & Rules
+  // 10. Clinic Operating Manual & Rules
   setupInstructionsSheet(ss);
   
   // Remove default sheet (Sheet1) if empty
@@ -200,44 +213,47 @@ function setupFrontDeskDashboard(ss) {
   sheet.setRowHeight(3, 24);
 
   // Section 1: Check-in / Search
+  const defaultPatientName = (INITIAL_CUSTOMERS && INITIAL_CUSTOMERS.length > 1)
+    ? (INITIAL_CUSTOMERS[1].name || INITIAL_CUSTOMERS[0].name)
+    : 'Jessica Abbruzzino';
   sheet.getRange('B5:C5').setFontWeight('bold').setFontSize(11);
   sheet.getRange('B5').setValue('🔍 PATIENT NAME:').setBackground('#f0ede6').setFontColor('#2b301c');
-  sheet.getRange('C5').setValue('Sarah Jenkins')
+  sheet.getRange('C5').setValue(defaultPatientName)
     .setBackground('#fff9db')
     .setFontWeight('bold')
     .setFontSize(12)
     .setBorder(true, true, true, true, false, false, '#d9a726', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
 
-  // Automated Patient Detection Formula (Cell F5)
+  // Automated Patient Detection Formula (Cell F5) — covers up to 5,000 patients
   sheet.getRange('E5').setValue('PATIENT STATUS:').setFontWeight('bold').setBackground('#f0ede6');
   sheet.getRange('F5').setFormula(
-    '=IF(ISBLANK(C5), "Waiting for input...", IF(ISNUMBER(MATCH(C5, \\'Customers & RFM\\'!B2:B300, 0)), "✅ EXISTING PATIENT", "🆕 NEW PATIENT (Fill below)"))'
+    '=IF(ISBLANK(C5), "Waiting for input...", IF(ISNUMBER(MATCH(C5, \\'Customers & RFM\\'!B2:B5000, 0)), "✅ EXISTING PATIENT", "🆕 NEW PATIENT (Fill below)"))'
   ).setFontWeight('bold').setFontSize(11).setHorizontalAlignment('center');
 
   // Automated History Formulas
   sheet.getRange('E6').setValue('Total Previous Visits:').setFontWeight('bold');
   sheet.getRange('F6').setFormula(
-    '=IFERROR(VLOOKUP(C5, \\'Customers & RFM\\'!B2:J300, 8, FALSE), 0)'
+    '=IFERROR(VLOOKUP(C5, \\'Customers & RFM\\'!B2:J5000, 8, FALSE), 0)'
   ).setHorizontalAlignment('center').setFontWeight('bold');
 
   sheet.getRange('E7').setValue('Total Historical Spend (CAD):').setFontWeight('bold');
   sheet.getRange('F7').setFormula(
-    '=IFERROR(VLOOKUP(C5, \\'Customers & RFM\\'!B2:J300, 9, FALSE), 0)'
+    '=IFERROR(VLOOKUP(C5, \\'Customers & RFM\\'!B2:J5000, 9, FALSE), 0)'
   ).setNumberFormat('$#,##0.00').setHorizontalAlignment('center').setFontWeight('bold');
 
   sheet.getRange('E8').setValue('RFM Segment:').setFontWeight('bold');
   sheet.getRange('F8').setFormula(
-    '=IFERROR(VLOOKUP(C5, \\'Customers & RFM\\'!B2:R300, 17, FALSE), "—")'
+    '=IFERROR(VLOOKUP(C5, \\'Customers & RFM\\'!B2:R5000, 17, FALSE), "—")'
   ).setHorizontalAlignment('center').setFontWeight('bold');
 
   sheet.getRange('E9').setValue('Last Recorded Visit:').setFontWeight('bold');
   sheet.getRange('F9').setFormula(
-    '=IFERROR(TEXT(VLOOKUP(C5, \\'Customers & RFM\\'!B2:H300, 7, FALSE), "yyyy-mm-dd"), "First consultation")'
+    '=IFERROR(TEXT(VLOOKUP(C5, \\'Customers & RFM\\'!B2:H5000, 7, FALSE), "yyyy-mm-dd"), "First consultation")'
   ).setHorizontalAlignment('center');
 
   sheet.getRange('E10').setValue('Recorded Insurance:').setFontWeight('bold');
   sheet.getRange('F10').setFormula(
-    '=IFERROR(VLOOKUP(C5, \\'Customers & RFM\\'!B2:L300, 11, FALSE), "To be filled")'
+    '=IFERROR(VLOOKUP(C5, \\'Customers & RFM\\'!B2:L5000, 11, FALSE), "To be filled")'
   ).setHorizontalAlignment('center');
 
   // History Card Border (E5:F10)
@@ -248,10 +264,10 @@ function setupFrontDeskDashboard(ss) {
     ['Appointment Date:', '=TODAY()', 'yyyy-mm-dd'],
     ['Selected Service:', 'Brazilian Lymphatic Drainage (60 Min)', 'text'],
     ['Practitioner / Therapist:', 'Camila Dos Santos, RMT', 'text'],
-    ['Total Service Price (CAD):', '=IF(ISBLANK(C7), 0, IFERROR(VLOOKUP(C7, \\'Procedures & Treatments\\'!B2:E50, 4, FALSE), 160))', '$#,##0.00'],
+    ['Total Service Price (CAD):', '=IF(ISBLANK(C7), 0, IFERROR(VLOOKUP(C7, \\'Procedures & Treatments\\'!B2:E200, 4, FALSE), 160))', '$#,##0.00'],
     ['Direct Insurance Billed (CAD):', 120, '$#,##0.00'],
     ['Patient Copay (CAD):', '=MAX(0, C9-C10)', '$#,##0.00'],
-    ['Referral Partner / Source:', 'Barrie CrossFit Apex', 'text'],
+    ['Referral Partner / Source:', 'No partner', 'text'],
     ['Appointment Status:', 'Completed', 'text'],
   ];
 
@@ -303,14 +319,13 @@ function setupFrontDeskDashboard(ss) {
     ], true).build();
   sheet.getRange('C8').setDataValidation(therapistRule);
 
+  const initialPartnerNames = INITIAL_PARTNERS.length > 0
+    ? INITIAL_PARTNERS.map(function(p) { return p.name; })
+    : ['No partner', 'Meta', 'Google', 'Existing Wellthera Client', 'Wellthera Partners'];
   const partnerRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList([
-      'Barrie CrossFit Apex',
-      'Lakeview Sports Physiotherapy & Rehab',
-      'Innisfil Pelvic Health & Wellness',
-      'Barrie Central Chiropractic',
-      'Direct / Organic Website'
-    ], true).build();
+    .requireValueInList(initialPartnerNames, true)
+    .setAllowInvalid(true)
+    .build();
   sheet.getRange('C12').setDataValidation(partnerRule);
 
   const statusRule = SpreadsheetApp.newDataValidation()
@@ -430,7 +445,7 @@ function logVisitFromFrontDesk() {
   const totalPrice = Number(frontDesk.getRange('C9').getValue()) || 0;
   const insuranceBilled = Number(frontDesk.getRange('C10').getValue()) || 0;
   const patientPaid = Number(frontDesk.getRange('C11').getValue()) || 0;
-  const partnerSource = frontDesk.getRange('C12').getValue() || 'Direct / Organic Website';
+  const partnerSource = frontDesk.getRange('C12').getValue() || 'No partner';
   const status = frontDesk.getRange('C13').getValue() || 'Completed';
 
   // 1. Check if patient already exists in Customers tab
@@ -630,11 +645,11 @@ function setupBookingsSheet(ss) {
       'Nurse-Led Injectables',
       'Psychotherapy'
     ], true).build();
-  sheet.getRange('E2:E300').setDataValidation(serviceRule);
+  sheet.getRange('E2:E5000').setDataValidation(serviceRule);
 
   const statusRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(['Completed', 'Upcoming', 'Cancelled'], true).build();
-  sheet.getRange('L2:L300').setDataValidation(statusRule);
+  sheet.getRange('L2:L5000').setDataValidation(statusRule);
 
   sheet.autoResizeColumns(1, headers.length);
 }
@@ -749,13 +764,13 @@ function setupInstructionsSheet(ss) {
     ['2. Select Service', 'Pick service in dropdown (C7) and clinician in (C8).', 'Price and copay formulas compute automatically.', 'Pre-filled defaults'],
     ['3. Confirm & Log', 'Check box in E19 or click menu "Wellthera Clinic" > "Log Visit".', 'Updates total visits, historical spend, and adds row to Bookings Log.', '1 click!'],
     ['', '', '', ''],
-    ['2. VALID PARTNER REFERRAL CODES', '', '', ''],
-    ['Referral Code', 'Partner Clinic Name', 'Commission Type', 'Agreed Rate'],
-    ['CFIT-APEX', 'Barrie CrossFit Apex', 'Revenue Share', '12% on consultation total'],
-    ['LAKE-PHYS', 'Lakeview Sports Physiotherapy', 'Flat Referral', '$25 flat per booking'],
-    ['INNIS-PELV', 'Innisfil Pelvic Health', 'Revenue Share', '15% on consultation total'],
-    ['BARRIE-CHIR', 'Barrie Central Chiropractic', 'Revenue Share', '10% on consultation total'],
-    ['DIRECT', 'Direct / Website / Organic Walk-in', 'None', '$0']
+    ['2. ACTIVE ACQUISITION CHANNELS & PARTNER CODES', '', '', ''],
+    ['Referral Code', 'Partner / Channel Name', 'Category', 'Commission / Notes'],
+    ['DIRECT', 'No partner', 'Direct / No Partner', '$0 (Direct / Walk-in / ClinicSense Unattributed)'],
+    ['CLIENT-REF', 'Existing Wellthera Client', 'Client Referral', 'Word-of-mouth referrals from existing clinic patients'],
+    ['GOOGLE', 'Google', 'Paid & Organic Search (Google)', 'Google Search & Business Profile tracking'],
+    ['PARTNER', 'Wellthera Partners', 'Clinic Referral Partner', 'External referral partners recorded in ClinicSense'],
+    ['META', 'Meta', 'Paid Social (Meta)', 'Instagram & Facebook acquisition tracking']
   ];
 
   const safeData = content.map(row => [
@@ -869,6 +884,73 @@ function setupProceduresSheet(ss) {
   sheet.autoResizeColumns(1, headers.length);
 }
 
+/**
+ * TAB: OKRS & QUARTERLY GOALS
+ */
+function setupOkrSheet(ss, okrList) {
+  const sourceOkrs = Array.isArray(okrList) ? okrList : INITIAL_OKR_PLANS;
+  let sheet = ss.getSheetByName('OKRs & Quarterly Goals') || ss.getSheetByName('OKRs');
+  if (!sheet) {
+    sheet = ss.insertSheet('OKRs & Quarterly Goals', 7);
+  } else {
+    sheet.clear();
+  }
+
+  sheet.setTabColor('#b45309');
+  sheet.setFrozenRows(1);
+
+  const headers = [
+    'Quarter', 'Year', 'Revenue Goal (CAD)', 'CAC Benchmark (CAD)',
+    'LTV:CAC Target', 'New Patients Target', 'Retention Target (%)',
+    'Partner Share Target (%)', 'Objective', 'Owner',
+    'Key Result', 'Current Value', 'Target Value', 'Unit', 'Status'
+  ];
+
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers])
+    .setBackground('#41472B')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold');
+
+  const rows = [];
+  (sourceOkrs || []).forEach(function(plan) {
+    const objectives = Array.isArray(plan.objectives) ? plan.objectives : [];
+    if (objectives.length === 0) {
+      rows.push([
+        plan.quarter, plan.year, plan.revenueGoalCAD, plan.cacBenchmarkCAD,
+        plan.ltvCacTargetRatio, plan.newPatientsTarget, plan.retentionTargetRate,
+        plan.partnerRevenueShareTarget, '', '', '', 0, 0, '', 'on_track'
+      ]);
+      return;
+    }
+    objectives.forEach(function(obj) {
+      const krs = Array.isArray(obj.keyResults) ? obj.keyResults : [];
+      if (krs.length === 0) {
+        rows.push([
+          plan.quarter, plan.year, plan.revenueGoalCAD, plan.cacBenchmarkCAD,
+          plan.ltvCacTargetRatio, plan.newPatientsTarget, plan.retentionTargetRate,
+          plan.partnerRevenueShareTarget, obj.title, obj.owner, '', 0, 0, '', 'on_track'
+        ]);
+        return;
+      }
+      krs.forEach(function(kr) {
+        rows.push([
+          plan.quarter, plan.year, plan.revenueGoalCAD, plan.cacBenchmarkCAD,
+          plan.ltvCacTargetRatio, plan.newPatientsTarget, plan.retentionTargetRate,
+          plan.partnerRevenueShareTarget, obj.title, obj.owner,
+          kr.title, kr.currentValue, kr.targetValue, kr.unit || '', kr.status || 'on_track'
+        ]);
+      });
+    });
+  });
+
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+    sheet.getRange(2, 3, rows.length, 2).setNumberFormat('$#,##0.00');
+  }
+
+  sheet.autoResizeColumns(1, headers.length);
+}
+
 function addNewPractitionerPrompt() {
   const ui = SpreadsheetApp.getUi();
   const nameResp = ui.prompt('Add Practitioner', 'Enter Full Name of Practitioner:', ui.ButtonSet.OK_CANCEL);
@@ -914,52 +996,87 @@ function addNewProcedurePrompt() {
   ss.toast('Service "' + name + '" added and front desk dropdowns refreshed!', 'Success ✅');
 }
 
+function addNewPartnerPrompt() {
+  const ui = SpreadsheetApp.getUi();
+  const nameResp = ui.prompt('Add Partner / Origin Tag', 'Enter Partner or Acquisition Source Name (e.g., Barrie CrossFit, Dr. Smith Clinic):', ui.ButtonSet.OK_CANCEL);
+  if (nameResp.getSelectedButton() !== ui.Button.OK) return;
+  const name = nameResp.getResponseText().trim();
+  if (!name) return;
+
+  const catResp = ui.prompt('Add Partner / Origin Tag', 'Enter Category (e.g., Clinic Referral Partner, Fitness & CrossFit, Physiotherapy & Chiro, Paid Social (Meta)):', ui.ButtonSet.OK_CANCEL);
+  const category = catResp.getSelectedButton() === ui.Button.OK && catResp.getResponseText().trim()
+    ? catResp.getResponseText().trim()
+    : 'Clinic Referral Partner';
+
+  const commResp = ui.prompt('Add Partner / Origin Tag', 'Enter Commission % or Flat CAD (enter 0 if none):', ui.ButtonSet.OK_CANCEL);
+  const commVal = commResp.getSelectedButton() === ui.Button.OK ? (Number(commResp.getResponseText().replace(/[^0-9.-]/g, '')) || 0) : 0;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Partners & ROI');
+  if (!sheet) {
+    sheet = ss.insertSheet('Partners & ROI');
+  }
+  const nextId = 'partner-' + new Date().getTime();
+  sheet.appendRow([
+    nextId, name, category, 'Clinic Management', '', '',
+    commVal > 0 ? 'Percentage (%)' : 'None ($0)', commVal, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 'Active'
+  ]);
+  refreshAllDropdownRules();
+  ss.toast('Partner / Origin "' + name + '" added and automatically enabled in Front Desk dropdowns!', 'Success ✅');
+}
+
 function refreshAllDropdownRules() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const frontDesk = ss.getSheetByName('🛎️ FRONT DESK DASHBOARD');
   if (!frontDesk) return;
 
+  const custSheet = ss.getSheetByName('Customers & RFM');
+  const bookSheet = ss.getSheetByName('Services & Bookings Log');
+  const partSheet = ss.getSheetByName('Partners & ROI');
   const practSheet = ss.getSheetByName('Practitioners & Team') || ss.getSheetByName('Practitioners');
   const procSheet = ss.getSheetByName('Procedures & Treatments') || ss.getSheetByName('Procedures');
 
-  const practitionersList = [];
-  if (practSheet && practSheet.getLastRow() > 1) {
-    const data = practSheet.getRange(2, 2, practSheet.getLastRow() - 1, 6).getValues();
-    for (let i = 0; i < data.length; i++) {
-      const name = String(data[i][0] || '').trim();
-      const status = String(data[i][5] || 'Active').trim();
-      if (name && status !== 'Inactive' && status !== 'Deleted') {
-        practitionersList.push(name);
-      }
-    }
+  // 1. Live Patient Name autocomplete (C5) from Customers & RFM (allows typing brand-new patients too)
+  if (custSheet) {
+    const patientRule = SpreadsheetApp.newDataValidation()
+      .requireValueInRange(custSheet.getRange('B2:B5000'), true)
+      .setAllowInvalid(true)
+      .build();
+    frontDesk.getRange('C5').setDataValidation(patientRule);
   }
 
-  const proceduresList = [];
-  if (procSheet && procSheet.getLastRow() > 1) {
-    const data = procSheet.getRange(2, 2, procSheet.getLastRow() - 1, 9).getValues();
-    for (let i = 0; i < data.length; i++) {
-      const name = String(data[i][0] || '').trim();
-      const status = String(data[i][8] || 'Active').trim();
-      if (name && status !== 'Inactive' && status !== 'Deleted') {
-        proceduresList.push(name);
-      }
-    }
-  }
-
-  if (proceduresList.length > 0) {
+  // 2. Live Service / Treatment dropdown (C7) bound directly to Procedures & Treatments!B2:B200
+  if (procSheet) {
     const serviceRule = SpreadsheetApp.newDataValidation()
-      .requireValueInList(proceduresList, true)
+      .requireValueInRange(procSheet.getRange('B2:B200'), true)
       .setAllowInvalid(true)
       .build();
     frontDesk.getRange('C7').setDataValidation(serviceRule);
   }
 
-  if (practitionersList.length > 0) {
+  // 3. Live Practitioner / Therapist dropdown (C8) bound directly to Practitioners & Team!B2:B200
+  if (practSheet) {
     const therapistRule = SpreadsheetApp.newDataValidation()
-      .requireValueInList(practitionersList, true)
+      .requireValueInRange(practSheet.getRange('B2:B200'), true)
       .setAllowInvalid(true)
       .build();
     frontDesk.getRange('C8').setDataValidation(therapistRule);
+  }
+
+  // 4. Live Origin / Referral Partner dropdown (C12 + Customers E + Bookings D) bound directly to Partners & ROI!B2:B200
+  if (partSheet) {
+    const partnerRangeRule = SpreadsheetApp.newDataValidation()
+      .requireValueInRange(partSheet.getRange('B2:B200'), true)
+      .setAllowInvalid(true)
+      .build();
+    frontDesk.getRange('C12').setDataValidation(partnerRangeRule);
+    if (custSheet) {
+      custSheet.getRange('E2:E5000').setDataValidation(partnerRangeRule);
+    }
+    if (bookSheet) {
+      bookSheet.getRange('D2:D5000').setDataValidation(partnerRangeRule);
+    }
   }
 }
 
@@ -982,6 +1099,15 @@ function showStaffGuideAlert() {
 
 function doGet(e) {
   try {
+    if (e && e.parameter && e.parameter.action === 'ping') {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        version: '5.0',
+        supportsFullSync: true,
+        message: 'Wellthera Apps Script v5.0 GET endpoint is online.',
+        timestamp: new Date().toISOString()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const data = exportDashboardData(ss);
     return ContentService.createTextOutput(JSON.stringify(data))
@@ -996,8 +1122,20 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    const payload = JSON.parse(e.postData.contents);
+    const rawBody = (e && e.postData && e.postData.contents) ? e.postData.contents : '{}';
+    const payload = JSON.parse(rawBody);
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 0. Action: Ping / Connection Test (verifies POST works without modifying data)
+    if (payload.action === 'ping') {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        version: '5.0',
+        supportsFullSync: true,
+        message: 'Wellthera Apps Script v5.0 POST Webhook is active and ready for 2-way sync!',
+        timestamp: new Date().toISOString()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
     
     // 1. Action: Add Booking
     if (payload.action === 'addBooking' && payload.booking) {
@@ -1012,12 +1150,155 @@ function doPost(e) {
       }
     }
 
-    // 2. Action: Full Sync Data from Dashboard
+    // 2. Action: Full Sync Data from Dashboard (writes all tabs from portal payload)
     if (payload.action === 'fullSync' && payload.data) {
-      // Synchronized data acknowledged
+      const d = payload.data;
+
+      if (Array.isArray(d.customers) && d.customers.length > 0) {
+        const custSheet = ss.getSheetByName('Customers & RFM') || ss.insertSheet('Customers & RFM', 1);
+        custSheet.clear();
+        const headers = [
+          'Customer ID', 'Full Name', 'Email', 'Phone', 'Partner Channel', 'Referral Code',
+          'First Visit', 'Last Visit', 'Total Visits', 'Total Spend (CAD)', 'Preferred Service',
+          'Insurance Provider', 'Status', 'Recency (Days)', 'R-Score', 'F-Score', 'M-Score', 'RFM Segment'
+        ];
+        custSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+          .setBackground('#41472B').setFontColor('#FFFFFF').setFontWeight('bold');
+        const rows = d.customers.map(function(c) {
+          return [
+            c.id || '', c.name || c.fullName || '', c.email || '', c.phone || '',
+            c.partnerName || 'No partner', c.referralCode || 'DIRECT',
+            c.firstVisitDate || '', c.lastVisitDate || '', Number(c.totalVisits) || 0,
+            Number(c.totalSpendCAD) || 0, c.preferredService || '', c.insuranceProvider || 'None / Self-Pay',
+            c.status || 'Active', Number(c.recencyDays) || 0, Number(c.recencyScore) || 1,
+            Number(c.frequencyScore) || 1, Number(c.monetaryScore) || 1, c.rfmSegment || 'Recent Customers'
+          ];
+        });
+        custSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+        custSheet.getRange(2, 10, rows.length, 1).setNumberFormat('$#,##0.00');
+        custSheet.setFrozenRows(1);
+      }
+
+      if (Array.isArray(d.bookings) && d.bookings.length > 0) {
+        const bookSheet = ss.getSheetByName('Services & Bookings Log') || ss.insertSheet('Services & Bookings Log', 2);
+        bookSheet.clear();
+        const headers = [
+          'Booking ID', 'Booking Date', 'Customer Name', 'Partner Source', 'Service Category',
+          'Service Title', 'Clinician / Therapist', 'Duration (Min)', 'Price (CAD)',
+          'Insurance Billed (CAD)', 'Patient Paid (CAD)', 'Status'
+        ];
+        bookSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+          .setBackground('#41472B').setFontColor('#FFFFFF').setFontWeight('bold');
+        const rows = d.bookings.map(function(b) {
+          return [
+            b.id || '', b.bookingDate || '', b.customerName || '', b.partnerName || 'No partner',
+            b.serviceCategory || '', b.serviceTitle || '', b.therapist || '',
+            Number(b.durationMinutes) || 60, Number(b.priceCAD) || 0,
+            Number(b.insuranceBilledCAD) || 0, Number(b.patientPaidCAD) || 0, b.status || 'Completed'
+          ];
+        });
+        bookSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+        bookSheet.getRange(2, 9, rows.length, 3).setNumberFormat('$#,##0.00');
+        bookSheet.setFrozenRows(1);
+      }
+
+      if (Array.isArray(d.partners) && d.partners.length > 0) {
+        const partSheet = ss.getSheetByName('Partners & ROI') || ss.insertSheet('Partners & ROI', 3);
+        partSheet.clear();
+        const headers = [
+          'Partner ID', 'Partner Name', 'Category', 'Contact Person', 'Email', 'Phone',
+          'Agreement Type', 'Commission Value', 'Monthly Retainer (CAD)', 'Patients Referred',
+          'Active Patients', 'Total Bookings', 'Total Revenue (CAD)', 'Commission Paid (CAD)',
+          'Net Revenue (CAD)', 'ROI %', 'Avg Customer Spend (CAD)', 'Status'
+        ];
+        partSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+          .setBackground('#41472B').setFontColor('#FFFFFF').setFontWeight('bold');
+        const rows = d.partners.map(function(p) {
+          return [
+            p.id || '', p.name || '', p.category || '', p.contactPerson || '', p.email || '', p.phone || '',
+            p.commissionType || 'Percentage', Number(p.commissionValue) || 0, Number(p.monthlyRetainerCAD) || 0,
+            Number(p.referredCustomersCount) || 0, Number(p.activeCustomersCount) || 0, Number(p.totalBookingsCount) || 0,
+            Number(p.totalRevenueCAD) || 0, Number(p.totalCommissionPaidCAD) || 0, Number(p.netRevenueCAD) || 0,
+            Number(p.roiPercent) || 0, Number(p.averageCustomerSpendCAD) || 0, p.status || 'Active'
+          ];
+        });
+        partSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+        partSheet.setFrozenRows(1);
+      }
+
+      if (Array.isArray(d.cacChannels) && d.cacChannels.length > 0) {
+        const cacSheet = ss.getSheetByName('CAC & Channel Costs') || ss.insertSheet('CAC & Channel Costs', 4);
+        cacSheet.clear();
+        const headers = [
+          'Channel / Partner', 'Month Period', 'Spend (CAD)', 'New Customers Acquired',
+          'Calculated CAC (CAD)', 'Average LTV (CAD)', 'LTV:CAC Ratio',
+          'Payback Visits', 'Payback Period (Months)'
+        ];
+        cacSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+          .setBackground('#41472B').setFontColor('#FFFFFF').setFontWeight('bold');
+        const rows = d.cacChannels.map(function(c) {
+          return [
+            c.partnerOrChannel || '', c.month || '', Number(c.spendCAD) || 0,
+            Number(c.newCustomersAcquired) || 0, Number(c.calculatedCacCAD) || 0,
+            Number(c.averageLtvCAD) || 0, Number(c.ltvCacRatio) || 0,
+            Number(c.paybackPeriodVisits) || 0, Number(c.paybackPeriodMonths) || 0
+          ];
+        });
+        cacSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+        cacSheet.setFrozenRows(1);
+      }
+
+      if (Array.isArray(d.practitioners) && d.practitioners.length > 0) {
+        const practSheet = ss.getSheetByName('Practitioners & Team') || ss.insertSheet('Practitioners & Team', 5);
+        practSheet.clear();
+        const headers = [
+          'Practitioner ID', 'Full Name', 'Professional Title', 'Discipline / Specialty',
+          'Email', 'Phone', 'Status', 'Services Offered'
+        ];
+        practSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+          .setBackground('#1e293b').setFontColor('#FFFFFF').setFontWeight('bold');
+        const rows = d.practitioners.map(function(p) {
+          return [
+            p.id || '', p.name || '', p.title || '', p.discipline || '',
+            p.email || '', p.phone || '', p.status || 'Active',
+            Array.isArray(p.servicesOffered) ? p.servicesOffered.join(', ') : (p.servicesOffered || '')
+          ];
+        });
+        practSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+        practSheet.setFrozenRows(1);
+      }
+
+      if (Array.isArray(d.procedures) && d.procedures.length > 0) {
+        const procSheet = ss.getSheetByName('Procedures & Treatments') || ss.insertSheet('Procedures & Treatments', 6);
+        procSheet.clear();
+        const headers = [
+          'Procedure ID', 'Procedure Name', 'Category', 'Duration (Min)', 'Standard Price (CAD)',
+          'Insurance Eligible', 'Avg Direct Billed (CAD)', 'Typical Copay (CAD)',
+          'Assigned Practitioners', 'Status', 'Clinical Description'
+        ];
+        procSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+          .setBackground('#0f766e').setFontColor('#FFFFFF').setFontWeight('bold');
+        const rows = d.procedures.map(function(proc) {
+          return [
+            proc.id || '', proc.name || '', proc.category || '', Number(proc.durationMinutes) || 60,
+            Number(proc.priceCAD) || 0, proc.insuranceCovered ? 'Yes' : 'No',
+            Number(proc.typicalInsuranceBillingCAD) || 0, Number(proc.typicalCopayCAD) || 0,
+            Array.isArray(proc.assignedPractitioners) ? proc.assignedPractitioners.join(', ') : (proc.assignedPractitioners || ''),
+            proc.status || 'Active', proc.description || ''
+          ];
+        });
+        procSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+        procSheet.setFrozenRows(1);
+      }
+
+      if (Array.isArray(d.okrPlans) && d.okrPlans.length > 0) {
+        setupOkrSheet(ss, d.okrPlans);
+      }
+
+      refreshAllDropdownRules();
     }
 
-    // 3. Action: Query latest datasets to update Vercel Dashboard
+    // 3. Action: Query latest datasets to update Portal Dashboard
     if (payload.action === 'getData' || payload.action === 'fetch') {
       return ContentService.createTextOutput(JSON.stringify(exportDashboardData(ss)))
         .setMimeType(ContentService.MimeType.JSON);
@@ -1025,7 +1306,7 @@ function doPost(e) {
 
     return ContentService.createTextOutput(JSON.stringify({
       status: 'success',
-      message: 'Data successfully recorded in Google Sheets!',
+      message: 'All portal datasets successfully synchronized to Google Sheets!',
       updatedAt: new Date().toISOString()
     })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {

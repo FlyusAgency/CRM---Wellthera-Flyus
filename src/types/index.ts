@@ -35,6 +35,11 @@ export interface Customer {
 }
 
 export type PartnerCategory =
+  | 'Direct / No Partner'
+  | 'Paid Social (Meta)'
+  | 'Paid & Organic Search (Google)'
+  | 'Client Referral'
+  | 'Clinic Referral Partner'
   | 'Fitness & CrossFit'
   | 'Physiotherapy & Chiro'
   | 'OB-GYN, Doulas & Pelvic Health'
