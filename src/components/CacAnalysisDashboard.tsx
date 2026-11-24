@@ -25,24 +25,32 @@ export const CacAnalysisDashboard: React.FC<CacAnalysisDashboardProps> = ({
   // Compute overall aggregates
   const totalSpend = cacChannels.reduce((acc, c) => acc + c.spendCAD, 0);
   const totalNewCustomers = cacChannels.reduce((acc, c) => acc + c.newCustomersAcquired, 0);
-  const blendedCac = totalNewCustomers > 0 ? totalSpend / totalNewCustomers : 0;
+  const blendedCac = totalNewCustomers > 0 && totalSpend > 0 ? totalSpend / totalNewCustomers : 0;
 
-  const partnerChannels = cacChannels.filter((c) => c.isPartner);
-  const directChannels = cacChannels.filter((c) => !c.isPartner);
+  const isPaidAdChannel = (c: CacChannelSpend) =>
+    /google|meta|facebook|instagram|paid/i.test(`${c.partnerOrChannel} ${c.category}`);
+
+  const paidAdsChannels = cacChannels.filter((c) => isPaidAdChannel(c));
+  const partnerChannels = cacChannels.filter((c) => c.isPartner && !isPaidAdChannel(c));
 
   const partnerSpend = partnerChannels.reduce((acc, c) => acc + c.spendCAD, 0);
   const partnerNewCust = partnerChannels.reduce((acc, c) => acc + c.newCustomersAcquired, 0);
-  const partnerCac = partnerNewCust > 0 ? partnerSpend / partnerNewCust : 0;
+  const partnerCac = partnerNewCust > 0 && partnerSpend > 0 ? partnerSpend / partnerNewCust : 0;
 
-  const directSpend = directChannels.reduce((acc, c) => acc + c.spendCAD, 0);
-  const directNewCust = directChannels.reduce((acc, c) => acc + c.newCustomersAcquired, 0);
-  const directCac = directNewCust > 0 ? directSpend / directNewCust : 0;
+  const paidAdsSpend = paidAdsChannels.reduce((acc, c) => acc + c.spendCAD, 0);
+  const paidAdsNewCust = paidAdsChannels.reduce((acc, c) => acc + c.newCustomersAcquired, 0);
+  const paidAdsCac = paidAdsNewCust > 0 && paidAdsSpend > 0 ? paidAdsSpend / paidAdsNewCust : 0;
 
-  const avgLtv = cacChannels.reduce((acc, c) => acc + c.averageLtvCAD, 0) / (cacChannels.length || 1);
-  const blendedLtvCacRatio = blendedCac > 0 ? avgLtv / blendedCac : 0;
+  // Weighted average LTV across all channels
+  const totalWeightedLtv = cacChannels.reduce(
+    (acc, c) => acc + c.averageLtvCAD * c.newCustomersAcquired,
+    0
+  );
+  const avgLtv = totalNewCustomers > 0 ? totalWeightedLtv / totalNewCustomers : 0;
+  const blendedLtvCacRatio = blendedCac > 0 && avgLtv > 0 ? avgLtv / blendedCac : 0;
 
   // Simulator calculation: If we allocate extra budget to the best partner channel
-  const simulatedNewPatients = Math.round(extraBudget / (partnerCac || 45));
+  const simulatedNewPatients = Math.round(extraBudget / (partnerCac || paidAdsCac || 45));
   const simulatedRevenueYield = Math.round(simulatedNewPatients * avgLtv);
 
   return (
@@ -69,7 +77,10 @@ export const CacAnalysisDashboard: React.FC<CacAnalysisDashboardProps> = ({
               ${blendedCac.toFixed(2)} CAD
             </div>
             <span className="text-[11px] text-[#686e4a] dark:text-[#aab187] flex items-center gap-1 mt-1 font-semibold">
-              <TrendingDown className="w-3 h-3" /> -18.4% vs industry ($115)
+              <TrendingDown className="w-3 h-3" />{' '}
+              {totalSpend > 0
+                ? `$${totalSpend.toLocaleString()} spend • ${totalNewCustomers.toLocaleString()} clients`
+                : 'No marketing spend logged yet'}
             </span>
           </div>
           <div
@@ -103,7 +114,10 @@ export const CacAnalysisDashboard: React.FC<CacAnalysisDashboardProps> = ({
               ${partnerCac.toFixed(2)} CAD
             </div>
             <span className="text-[11px] text-[#686e4a] dark:text-[#aab187] flex items-center gap-1 mt-1 font-semibold">
-              <ShieldCheck className="w-3 h-3" /> 60% cheaper than paid ads
+              <ShieldCheck className="w-3 h-3" />{' '}
+              {partnerNewCust > 0
+                ? `${partnerNewCust} referred clients • $${partnerSpend.toLocaleString()} spend`
+                : 'No partner spend logged yet'}
             </span>
           </div>
           <div
@@ -134,14 +148,14 @@ export const CacAnalysisDashboard: React.FC<CacAnalysisDashboardProps> = ({
               Paid Ads (Google / Meta)
             </span>
             <div className="text-2xl font-bold font-serif text-[#b88c00] dark:text-[#e6b000] mt-1">
-              ${directCac.toFixed(2)} CAD
+              ${paidAdsCac.toFixed(2)} CAD
             </div>
             <span
               className={`text-[11px] mt-1 block ${
                 isDarkMode ? 'text-[#8b927a]' : 'text-[#7d7663]'
               }`}
             >
-              $1,300 spend • 13 patients
+              ${paidAdsSpend.toLocaleString()} spend • {paidAdsNewCust} patients
             </span>
           </div>
           <div
@@ -175,7 +189,10 @@ export const CacAnalysisDashboard: React.FC<CacAnalysisDashboardProps> = ({
               {blendedLtvCacRatio.toFixed(1)} : 1
             </div>
             <span className="text-[11px] text-[#686e4a] dark:text-[#aab187] flex items-center gap-1 mt-1 font-semibold">
-              <CheckCircle2 className="w-3 h-3" /> Target &gt;3.0x exceeded
+              <CheckCircle2 className="w-3 h-3" />{' '}
+              {blendedLtvCacRatio >= 3
+                ? 'Target >3.0x exceeded'
+                : 'Awaiting ad spend & booking logs'}
             </span>
           </div>
           <div

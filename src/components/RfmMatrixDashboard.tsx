@@ -114,6 +114,15 @@ const SEGMENT_DEFINITIONS: Record<
     borderAccent: 'border-[#e7e3da]',
     icon: <Clock className="w-4 h-4 text-[#7d7663]" />,
   },
+  Unscored: {
+    title: 'Unscored (ClinicSense Import)',
+    description: 'Imported from ClinicSense Client List without visit dates or CAD spend yet. RFM scores activate automatically as real appointments are logged.',
+    actionStrategy: 'Log visits via Front Desk Quick Log or import ClinicSense Appointments & Sales reports to score recency and monetary value.',
+    badgeColor: 'bg-[#f0ede6] dark:bg-[#181b11] text-[#7d7663] dark:text-[#8b927a] border-[#e7e3da]',
+    bgAccent: 'bg-[#f0ede6] dark:bg-[#181b11]',
+    borderAccent: 'border-[#cdc8bb]',
+    icon: <Calendar className="w-4 h-4 text-[#7d7663]" />,
+  },
 };
 
 export const RfmMatrixDashboard: React.FC<RfmMatrixDashboardProps> = ({
@@ -121,7 +130,10 @@ export const RfmMatrixDashboard: React.FC<RfmMatrixDashboardProps> = ({
   onFilterBySegment,
   isDarkMode = false,
 }) => {
-  const [selectedSegment, setSelectedSegment] = useState<RfmSegment>('Champions');
+  const hasChampions = customers.some((c) => c.rfmSegment === 'Champions');
+  const [selectedSegment, setSelectedSegment] = useState<RfmSegment>(
+    hasChampions ? 'Champions' : 'Unscored'
+  );
   const [selectedCustomerForOutreach, setSelectedCustomerForOutreach] = useState<Customer | null>(null);
   const [outreachSuccessNotice, setOutreachSuccessNotice] = useState<string | null>(null);
 
@@ -136,6 +148,7 @@ export const RfmMatrixDashboard: React.FC<RfmMatrixDashboardProps> = ({
     "Can't Lose Them": [],
     'At Risk': [],
     Hibernating: [],
+    Unscored: [],
   };
 
   customers.forEach((c) => {
@@ -373,14 +386,14 @@ export const RfmMatrixDashboard: React.FC<RfmMatrixDashboardProps> = ({
                             : 'text-[#b84a36] dark:text-[#e8816f]'
                         }`}
                       >
-                        {cust.recencyDays}d ago
+                        {cust.lastVisitDate ? `${cust.recencyDays}d ago` : 'Not recorded'}
                       </span>
                       <span
                         className={`text-[10px] block ${
                           isDarkMode ? 'text-[#8b927a]' : 'text-[#7d7663]'
                         }`}
                       >
-                        {cust.lastVisitDate}
+                        {cust.lastVisitDate || '—'}
                       </span>
                     </td>
                     <td className="py-3 px-2 text-center font-mono font-bold">

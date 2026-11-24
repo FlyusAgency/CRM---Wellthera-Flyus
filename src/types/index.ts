@@ -7,7 +7,8 @@ export type RfmSegment =
   | 'Needs Attention'
   | 'At Risk'
   | 'Can\'t Lose Them'
-  | 'Hibernating';
+  | 'Hibernating'
+  | 'Unscored';
 
 export type CustomerStatus = 'Active' | 'At Risk' | 'Churned' | 'VIP' | 'Prospective';
 

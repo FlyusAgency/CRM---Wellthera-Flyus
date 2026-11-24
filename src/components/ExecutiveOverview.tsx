@@ -32,8 +32,9 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
   onNavigateTab,
   isDarkMode = false,
 }) => {
-  const totalRevenue = bookings.reduce((acc, b) => acc + b.priceCAD, 0);
-  const totalInsurance = bookings.reduce((acc, b) => acc + b.insuranceBilledCAD, 0);
+  const completedBookings = bookings.filter((b) => b.status === 'Completed');
+  const totalRevenue = completedBookings.reduce((acc, b) => acc + b.priceCAD, 0);
+  const totalInsurance = completedBookings.reduce((acc, b) => acc + b.insuranceBilledCAD, 0);
   const referralPartners = partners.filter(
     (p) => p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct'
   );
@@ -45,10 +46,15 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
   const partnerRoi = partnerCost > 0 ? (netPartnerRev / partnerCost) * 100 : 0;
 
   const totalMarketingSpend = cacChannels.reduce((acc, c) => acc + c.spendCAD, 0);
-  const totalNewPatients = cacChannels.reduce((acc, c) => acc + c.newCustomersAcquired, 0);
-  const blendedCac = totalNewPatients > 0 ? totalMarketingSpend / totalNewPatients : 0;
-  const avgLtv = cacChannels.reduce((acc, c) => acc + c.averageLtvCAD, 0) / (cacChannels.length || 1);
-  const ltvCacRatio = blendedCac > 0 ? avgLtv / blendedCac : 0;
+  const paidChannelsWithSpend = cacChannels.filter((c) => c.spendCAD > 0);
+  const paidAcquiredPatients = paidChannelsWithSpend.reduce((acc, c) => acc + c.newCustomersAcquired, 0);
+  const blendedCac =
+    totalMarketingSpend > 0 && paidAcquiredPatients > 0
+      ? totalMarketingSpend / paidAcquiredPatients
+      : 0;
+  const totalCustomerSpend = customers.reduce((acc, c) => acc + (c.totalSpendCAD || 0), 0);
+  const avgLtv = customers.length > 0 ? totalCustomerSpend / customers.length : 0;
+  const ltvCacRatio = blendedCac > 0 && avgLtv > 0 ? avgLtv / blendedCac : 0;
 
   const championsCount = customers.filter((c) => c.rfmSegment === 'Champions').length;
   const loyalCount = customers.filter((c) => c.rfmSegment === 'Loyal Customers').length;

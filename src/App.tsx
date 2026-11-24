@@ -74,22 +74,121 @@ export default function App() {
   // Active Tab
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
 
-  // Primary Data State with LocalStorage Persistence & Cache Invalidation (v8: Clean Nov 22, 2026 ClinicSense Export + All 5 Origin/Partner Tags)
-  const [customers, setCustomers] = useState<Customer[]>(() => {
+  // Helper: identify synthetic ClinicSense placeholder bookings generated in prior versions (b-1000..b-1999)
+  const isSyntheticLegacyBooking = (b: ServiceBooking) =>
+    /^b-1\d{3}$/.test(String(b.id || ''));
+
+  // Primary Data State with Smart Migration (v9: Zero Fabricated Data — preserves Samuel's practitioners, services, OKRs, partners, sheet sync & manual logs)
+  const [bookings, setBookings] = useState<ServiceBooking[]>(() => {
     try {
-      const savedV8 = localStorage.getItem('wellthera_customers_v8');
+      const savedV9 = localStorage.getItem('wellthera_bookings_v9');
+      if (savedV9) {
+        const parsed = JSON.parse(savedV9);
+        if (Array.isArray(parsed)) return parsed;
+      }
+      // One-time migration from v8: strip only the 260 synthetic bookings (b-1000..b-1259) and preserve any real manual bookings logged today
+      const savedV8 = localStorage.getItem('wellthera_bookings_v8');
       if (savedV8) {
         const parsed = JSON.parse(savedV8);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((b: ServiceBooking) => !isSyntheticLegacyBooking(b));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load bookings from storage', e);
+    }
+    return initialBookings;
+  });
+
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const savedV9 = localStorage.getItem('wellthera_customers_v9');
+      if (savedV9) {
+        const parsed = JSON.parse(savedV9);
         if (Array.isArray(parsed) && parsed.length >= 1000) {
           return parsed;
         }
       }
+
+      // One-time clean migration from v8 -> v9:
+      // Start from authentic ClinicSense CSV customers (no fake dates/spend/services/insurers),
+      // while preserving any manual customers, manual partner assignments, and real bookings logged today.
+      const baseById = new Map<string, Customer>(
+        initialCustomers.map((c) => [c.id, { ...c }])
+      );
+
+      const savedV8CustsRaw = localStorage.getItem('wellthera_customers_v8');
+      if (savedV8CustsRaw) {
+        const savedV8Custs = JSON.parse(savedV8CustsRaw);
+        if (Array.isArray(savedV8Custs)) {
+          for (const prev of savedV8Custs as Customer[]) {
+            const existing = baseById.get(prev.id);
+            if (!existing) {
+              // Preserve brand-new customer manually created by staff
+              baseById.set(prev.id, prev);
+            } else if (
+              prev.partnerId &&
+              prev.partnerId !== existing.partnerId &&
+              prev.partnerId !== 'p-8'
+            ) {
+              // Preserve manual partner re-assignment made by staff
+              existing.partnerId = prev.partnerId;
+              existing.partnerName = prev.partnerName;
+              existing.referralCode = prev.referralCode || existing.referralCode;
+            }
+          }
+        }
+      }
+
+      // Re-apply any preserved real manual bookings onto their customers
+      const savedV8BookRaw = localStorage.getItem('wellthera_bookings_v8');
+      if (savedV8BookRaw) {
+        const savedV8Books = JSON.parse(savedV8BookRaw);
+        if (Array.isArray(savedV8Books)) {
+          const realBooks = (savedV8Books as ServiceBooking[]).filter(
+            (b) => !isSyntheticLegacyBooking(b) && b.status === 'Completed'
+          );
+          for (const b of realBooks) {
+            const cust =
+              baseById.get(b.customerId) ||
+              Array.from(baseById.values()).find(
+                (c) => c.name.trim().toLowerCase() === (b.customerName || '').trim().toLowerCase()
+              );
+            if (cust) {
+              cust.totalSpendCAD = Math.round((cust.totalSpendCAD + (b.priceCAD || 0)) * 100) / 100;
+              if (!cust.firstVisitDate || (b.bookingDate && b.bookingDate < cust.firstVisitDate)) {
+                cust.firstVisitDate = b.bookingDate;
+              }
+              if (!cust.lastVisitDate || (b.bookingDate && b.bookingDate > cust.lastVisitDate)) {
+                cust.lastVisitDate = b.bookingDate;
+              }
+              if (b.serviceCategory) cust.preferredService = b.serviceCategory;
+              const diffDays = b.bookingDate
+                ? Math.max(0, Math.round((Date.now() - new Date(b.bookingDate).getTime()) / 86400000))
+                : 0;
+              cust.recencyDays = diffDays;
+              const { rScore, fScore, mScore, segment } = computeRfmSegment(
+                diffDays,
+                Math.max(1, cust.totalVisits),
+                cust.totalSpendCAD
+              );
+              cust.recencyScore = rScore;
+              cust.frequencyScore = fScore;
+              cust.monetaryScore = mScore;
+              cust.rfmSegment = segment;
+            }
+          }
+        }
+      }
+
+      return Array.from(baseById.values());
     } catch (e) {
       console.warn('Failed to load customers from storage', e);
     }
     return initialCustomers;
   });
 
+  // Preserve Samuel's partners (wellthera_partners_v8 is kept intact; metrics recompute dynamically)
   const [partners, setPartners] = useState<Partner[]>(() => {
     try {
       const saved = localStorage.getItem('wellthera_partners_v8');
@@ -103,21 +202,9 @@ export default function App() {
     return initialPartners;
   });
 
-  const [bookings, setBookings] = useState<ServiceBooking[]>(() => {
-    try {
-      const saved = localStorage.getItem('wellthera_bookings_v8');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to load bookings from storage', e);
-    }
-    return initialBookings;
-  });
-
   const [cacChannels, setCacChannels] = useState<CacChannelSpend[]>(initialCacChannels);
 
+  // Preserve Samuel's practitioners (wellthera_practitioners_v5 untouched)
   const [practitioners, setPractitioners] = useState<Practitioner[]>(() => {
     try {
       const saved = localStorage.getItem('wellthera_practitioners_v5');
@@ -131,6 +218,7 @@ export default function App() {
     return initialPractitioners;
   });
 
+  // Preserve Samuel's services/procedures (wellthera_procedures_v5 untouched)
   const [procedures, setProcedures] = useState<ClinicProcedure[]>(() => {
     try {
       const saved = localStorage.getItem('wellthera_procedures_v5');
@@ -147,7 +235,7 @@ export default function App() {
   // Persist datasets to LocalStorage
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_customers_v8', JSON.stringify(customers));
+      localStorage.setItem('wellthera_customers_v9', JSON.stringify(customers));
     } catch (e) {
       console.warn('Failed to persist customers', e);
     }
@@ -163,7 +251,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_bookings_v8', JSON.stringify(bookings));
+      localStorage.setItem('wellthera_bookings_v9', JSON.stringify(bookings));
     } catch (e) {
       console.warn('Failed to persist bookings', e);
     }
@@ -474,18 +562,16 @@ export default function App() {
         (c) => c.status === 'Active' || c.status === 'VIP'
       ).length;
 
-      // Find all bookings linked to this partner
+      // Find all COMPLETED bookings linked to this partner (never count Upcoming/Cancelled in realized revenue)
       const partnerBookings = currentBookings.filter((b) => {
+        if (b.status !== 'Completed') return false;
         if (partnerIsNoPartner) {
           return isNoPartnerId(b.partnerId);
         }
         return b.partnerId === partner.id;
       });
 
-      const totalBookingsCount =
-        partnerBookings.length > 0
-          ? partnerBookings.length
-          : referredCusts.reduce((sum, c) => sum + (c.totalVisits || 1), 0);
+      const totalBookingsCount = partnerBookings.length;
 
       const totalRevenueCAD =
         partnerBookings.length > 0
@@ -844,14 +930,16 @@ export default function App() {
     );
   };
 
-  // Calculate latest date timestamp in bookings for relative date range filtering (30d, 90d, 180d, 365d)
+  // Calculate reference timestamp for relative date range filtering (capped at today so future bookings never skew cutoffs)
   const maxBookingTimestamp = useMemo(() => {
+    const now = Date.now();
     let max = 0;
     for (const b of bookings) {
+      if (b.status !== 'Completed') continue;
       const t = new Date(b.bookingDate).getTime();
-      if (!isNaN(t) && t > max) max = t;
+      if (!isNaN(t) && t <= now && t > max) max = t;
     }
-    return max || new Date('2026-10-23T23:59:59').getTime();
+    return max || now;
   }, [bookings]);
 
   // Set of customer IDs that match the active RFM segment slicer
@@ -883,8 +971,11 @@ export default function App() {
   // Cross-filtering computation across all visual models
   const filteredCustomers = useMemo(() => {
     return customers.filter((c) => {
-      // Date range filter based on patient recency
+      // Date range filter based on real recorded lastVisitDate
       if (filters.dateRange !== 'all') {
+        if (!c.lastVisitDate || c.lastVisitDate === 'Never') {
+          return false;
+        }
         const days =
           filters.dateRange === '30d'
             ? 30
@@ -893,7 +984,9 @@ export default function App() {
             : filters.dateRange === '180d'
             ? 180
             : 365;
-        if (c.recencyDays > days) {
+        const cutoff = maxBookingTimestamp - days * 24 * 60 * 60 * 1000;
+        const lastTime = new Date(c.lastVisitDate).getTime();
+        if (isNaN(lastTime) || lastTime < cutoff) {
           return false;
         }
       }
@@ -1057,26 +1150,55 @@ export default function App() {
   }, [partners, filters.selectedPartners, filteredCustomers, filteredBookings]);
 
   const filteredCacChannels = useMemo(() => {
-    if (filters.selectedPartners.length === 0) return cacChannels;
-    return cacChannels.filter((c) => {
-      const partner = partners.find(
-        (p) => p.name.toLowerCase() === c.partnerOrChannel.toLowerCase()
+    const base =
+      filters.selectedPartners.length === 0
+        ? cacChannels
+        : cacChannels.filter((c) => {
+            const partner = partners.find(
+              (p) => p.name.toLowerCase() === c.partnerOrChannel.toLowerCase()
+            );
+            if (partner) {
+              return filters.selectedPartners.includes(partner.id);
+            }
+            if (
+              filters.selectedPartners.some((id) => isNoPartnerId(id)) &&
+              !c.isPartner
+            ) {
+              return true;
+            }
+            return false;
+          });
+
+    // Dynamically recompute real customer counts & real LTV from filteredCustomers
+    return base.map((ch) => {
+      const matchedPartner = partners.find(
+        (p) => p.name.toLowerCase() === ch.partnerOrChannel.toLowerCase()
       );
-      if (partner) {
-        return filters.selectedPartners.includes(partner.id);
-      }
-      if (
-        filters.selectedPartners.some((id) => isNoPartnerId(id)) &&
-        !c.isPartner
-      ) {
-        return true;
-      }
-      return false;
+      const channelCusts = filteredCustomers.filter((cust) => {
+        if (!ch.isPartner) return isNoPartnerId(cust.partnerId);
+        if (matchedPartner) return cust.partnerId === matchedPartner.id;
+        return cust.partnerName.toLowerCase() === ch.partnerOrChannel.toLowerCase();
+      });
+      const count = channelCusts.length;
+      const totalSpend = channelCusts.reduce((sum, cust) => sum + (cust.totalSpendCAD || 0), 0);
+      const avgLtv = count > 0 ? totalSpend / count : 0;
+      const calcCac = count > 0 && ch.spendCAD > 0 ? ch.spendCAD / count : 0;
+      const ratio = calcCac > 0 && avgLtv > 0 ? avgLtv / calcCac : 0;
+
+      return {
+        ...ch,
+        newCustomersAcquired: count,
+        calculatedCacCAD: Math.round(calcCac * 100) / 100,
+        averageLtvCAD: Math.round(avgLtv * 100) / 100,
+        ltvCacRatio: Math.round(ratio * 100) / 100,
+      };
     });
-  }, [cacChannels, filters.selectedPartners, partners]);
+  }, [cacChannels, filters.selectedPartners, partners, filteredCustomers]);
 
   const filteredTotalRevenue = useMemo(() => {
-    return filteredBookings.reduce((acc, b) => acc + b.priceCAD, 0);
+    return filteredBookings
+      .filter((b) => b.status === 'Completed')
+      .reduce((acc, b) => acc + b.priceCAD, 0);
   }, [filteredBookings]);
 
   // Gatekeeper protection screen (protects public dashboard on Vercel)

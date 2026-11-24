@@ -26,8 +26,10 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
     'Psychotherapy',
   ];
 
+  const completedBookings = bookings.filter((b) => b.status === 'Completed');
+
   const serviceStats = categories.map((cat) => {
-    const list = bookings.filter((b) => b.serviceCategory === cat);
+    const list = completedBookings.filter((b) => b.serviceCategory === cat);
     const totalRev = list.reduce((acc, b) => acc + b.priceCAD, 0);
     const insuranceRev = list.reduce((acc, b) => acc + b.insuranceBilledCAD, 0);
     const patientRev = list.reduce((acc, b) => acc + b.patientPaidCAD, 0);
@@ -38,7 +40,7 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
     list.forEach((b) => {
       partnerCounts[b.partnerName] = (partnerCounts[b.partnerName] || 0) + 1;
     });
-    const topPartner = Object.entries(partnerCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Direct';
+    const topPartner = Object.entries(partnerCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'No partner';
 
     return {
       category: cat,
@@ -52,13 +54,13 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
     };
   });
 
-  const grandTotalRevenue = bookings.reduce((acc, b) => acc + b.priceCAD, 0);
-  const totalInsuranceBilled = bookings.reduce((acc, b) => acc + b.insuranceBilledCAD, 0);
-  const totalPatientPaid = bookings.reduce((acc, b) => acc + b.patientPaidCAD, 0);
+  const grandTotalRevenue = completedBookings.reduce((acc, b) => acc + b.priceCAD, 0);
+  const totalInsuranceBilled = completedBookings.reduce((acc, b) => acc + b.insuranceBilledCAD, 0);
+  const totalPatientPaid = completedBookings.reduce((acc, b) => acc + b.patientPaidCAD, 0);
 
   // Therapist breakdown
   const therapistCounts: Record<string, { count: number; rev: number; specialty: string }> = {};
-  bookings.forEach((b) => {
+  completedBookings.forEach((b) => {
     if (!therapistCounts[b.therapist]) {
       therapistCounts[b.therapist] = { count: 0, rev: 0, specialty: b.serviceCategory };
     }

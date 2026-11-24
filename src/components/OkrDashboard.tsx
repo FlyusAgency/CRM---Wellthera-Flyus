@@ -108,15 +108,18 @@ export const OkrDashboard: React.FC<OkrDashboardProps> = ({
   const [newQuarterName, setNewQuarterName] = useState('Q1 2027');
   const [newQuarterYear, setNewQuarterYear] = useState(2027);
 
-  // Derived Actuals from System Database
-  const totalActualRevenue = bookings.reduce((sum, b) => sum + (b.priceCAD || 0), 0);
+  // Derived Actuals from System Database (Completed bookings & real recorded spend only)
+  const completedBookings = bookings.filter((b) => b.status === 'Completed');
+  const totalActualRevenue = completedBookings.reduce((sum, b) => sum + (b.priceCAD || 0), 0);
   const totalSpend = cacChannels.reduce((sum, c) => sum + c.spendCAD, 0);
-  const totalAcquired = cacChannels.reduce((sum, c) => sum + c.newCustomersAcquired, 0);
-  const actualBlendedCac = totalAcquired > 0 ? totalSpend / totalAcquired : 41.5;
+  const paidChannels = cacChannels.filter((c) => c.spendCAD > 0);
+  const paidAcquired = paidChannels.reduce((sum, c) => sum + c.newCustomersAcquired, 0);
+  const totalAcquired = customers.filter((c) => Boolean(c.firstVisitDate)).length;
+  const actualBlendedCac = totalSpend > 0 && paidAcquired > 0 ? totalSpend / paidAcquired : 0;
 
-  const avgLtv =
-    cacChannels.reduce((sum, c) => sum + c.averageLtvCAD, 0) / (cacChannels.length || 1);
-  const actualLtvCac = actualBlendedCac > 0 ? avgLtv / actualBlendedCac : 6.8;
+  const totalCustomerSpend = customers.reduce((sum, c) => sum + (c.totalSpendCAD || 0), 0);
+  const avgLtv = customers.length > 0 ? totalCustomerSpend / customers.length : 0;
+  const actualLtvCac = actualBlendedCac > 0 && avgLtv > 0 ? avgLtv / actualBlendedCac : 0;
 
   const partnerOnlyGross = partners
     .filter((p) => p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct')

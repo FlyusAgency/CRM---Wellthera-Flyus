@@ -28,6 +28,7 @@ const RFM_OPTIONS: RfmSegment[] = [
   'Can\'t Lose Them',
   'At Risk',
   'Hibernating',
+  'Unscored',
 ];
 
 export const SlicerBar: React.FC<SlicerBarProps> = ({
