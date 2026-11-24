@@ -74,26 +74,46 @@ export default function App() {
   // Active Tab
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
 
-  // Helper: identify synthetic ClinicSense placeholder bookings generated in prior versions (b-1000..b-1999)
+  // Helper: identify synthetic ClinicSense placeholder bookings generated in legacy versions (b-1000..b-1999)
   const isSyntheticLegacyBooking = (b: ServiceBooking) =>
     /^b-1\d{3}$/.test(String(b.id || ''));
 
-  // Primary Data State with Smart Migration (v9: Zero Fabricated Data — preserves Samuel's practitioners, services, OKRs, partners, sheet sync & manual logs)
+  // Helper: identify bookings that generated real collected revenue (Completed visits + paid late-cancel/no-show fees)
+  const isBillableBooking = (b: ServiceBooking) =>
+    b.status === 'Completed' || (b.status === 'Cancelled' && (b.priceCAD || 0) > 0);
+
+  // Primary Data State with Smart Migration (v10: Full 3-Report ClinicSense Reconciliation Apr 2025 – Nov 23, 2026)
+  // Preserves Samuel's practitioners (v5), services/procedures (v5), OKRs (v5), partners (v8), sheet sync (v8), and manual Front Desk logs
   const [bookings, setBookings] = useState<ServiceBooking[]>(() => {
     try {
+      const savedV10 = localStorage.getItem('wellthera_bookings_v10');
+      if (savedV10) {
+        const parsed = JSON.parse(savedV10);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+
+      // One-time upgrade from v9 -> v10: load all 3,929 reconciled ClinicSense bookings + preserve any real manual bookings logged in v9
+      const merged: ServiceBooking[] = [...initialBookings];
+      const existingIds = new Set(merged.map((b) => b.id));
       const savedV9 = localStorage.getItem('wellthera_bookings_v9');
       if (savedV9) {
-        const parsed = JSON.parse(savedV9);
-        if (Array.isArray(parsed)) return parsed;
-      }
-      // One-time migration from v8: strip only the 260 synthetic bookings (b-1000..b-1259) and preserve any real manual bookings logged today
-      const savedV8 = localStorage.getItem('wellthera_bookings_v8');
-      if (savedV8) {
-        const parsed = JSON.parse(savedV8);
-        if (Array.isArray(parsed)) {
-          return parsed.filter((b: ServiceBooking) => !isSyntheticLegacyBooking(b));
+        const parsedV9 = JSON.parse(savedV9);
+        if (Array.isArray(parsedV9)) {
+          for (const b of parsedV9 as ServiceBooking[]) {
+            if (
+              b &&
+              b.id &&
+              !existingIds.has(b.id) &&
+              !isSyntheticLegacyBooking(b) &&
+              !String(b.id).startsWith('CS-')
+            ) {
+              merged.unshift(b);
+              existingIds.add(b.id);
+            }
+          }
         }
       }
+      return merged;
     } catch (e) {
       console.warn('Failed to load bookings from storage', e);
     }
@@ -102,26 +122,26 @@ export default function App() {
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
     try {
-      const savedV9 = localStorage.getItem('wellthera_customers_v9');
-      if (savedV9) {
-        const parsed = JSON.parse(savedV9);
+      const savedV10 = localStorage.getItem('wellthera_customers_v10');
+      if (savedV10) {
+        const parsed = JSON.parse(savedV10);
         if (Array.isArray(parsed) && parsed.length >= 1000) {
           return parsed;
         }
       }
 
-      // One-time clean migration from v8 -> v9:
-      // Start from authentic ClinicSense CSV customers (no fake dates/spend/services/insurers),
-      // while preserving any manual customers, manual partner assignments, and real bookings logged today.
+      // One-time clean upgrade from v9 -> v10:
+      // Start from all 1,182 reconciled ClinicSense Nov 24 customers (real visits, spend, dates, RFM, services, billing type),
+      // while preserving any manual customers, manual partner assignments, and manual bookings logged in v9.
       const baseById = new Map<string, Customer>(
         initialCustomers.map((c) => [c.id, { ...c }])
       );
 
-      const savedV8CustsRaw = localStorage.getItem('wellthera_customers_v8');
-      if (savedV8CustsRaw) {
-        const savedV8Custs = JSON.parse(savedV8CustsRaw);
-        if (Array.isArray(savedV8Custs)) {
-          for (const prev of savedV8Custs as Customer[]) {
+      const savedV9CustsRaw = localStorage.getItem('wellthera_customers_v9');
+      if (savedV9CustsRaw) {
+        const savedV9Custs = JSON.parse(savedV9CustsRaw);
+        if (Array.isArray(savedV9Custs)) {
+          for (const prev of savedV9Custs as Customer[]) {
             const existing = baseById.get(prev.id);
             if (!existing) {
               // Preserve brand-new customer manually created by staff
@@ -129,7 +149,8 @@ export default function App() {
             } else if (
               prev.partnerId &&
               prev.partnerId !== existing.partnerId &&
-              prev.partnerId !== 'p-8'
+              prev.partnerId !== 'p-8' &&
+              prev.partnerId !== 'no-partner'
             ) {
               // Preserve manual partner re-assignment made by staff
               existing.partnerId = prev.partnerId;
@@ -140,21 +161,26 @@ export default function App() {
         }
       }
 
-      // Re-apply any preserved real manual bookings onto their customers
-      const savedV8BookRaw = localStorage.getItem('wellthera_bookings_v8');
-      if (savedV8BookRaw) {
-        const savedV8Books = JSON.parse(savedV8BookRaw);
-        if (Array.isArray(savedV8Books)) {
-          const realBooks = (savedV8Books as ServiceBooking[]).filter(
-            (b) => !isSyntheticLegacyBooking(b) && b.status === 'Completed'
+      // Re-apply any preserved manual bookings from v9 onto their customers
+      const savedV9BookRaw = localStorage.getItem('wellthera_bookings_v9');
+      if (savedV9BookRaw) {
+        const savedV9Books = JSON.parse(savedV9BookRaw);
+        if (Array.isArray(savedV9Books)) {
+          const manualBooks = (savedV9Books as ServiceBooking[]).filter(
+            (b) =>
+              b &&
+              !isSyntheticLegacyBooking(b) &&
+              !String(b.id || '').startsWith('CS-') &&
+              b.status === 'Completed'
           );
-          for (const b of realBooks) {
+          for (const b of manualBooks) {
             const cust =
               baseById.get(b.customerId) ||
               Array.from(baseById.values()).find(
                 (c) => c.name.trim().toLowerCase() === (b.customerName || '').trim().toLowerCase()
               );
             if (cust) {
+              cust.totalVisits = (cust.totalVisits || 0) + 1;
               cust.totalSpendCAD = Math.round((cust.totalSpendCAD + (b.priceCAD || 0)) * 100) / 100;
               if (!cust.firstVisitDate || (b.bookingDate && b.bookingDate < cust.firstVisitDate)) {
                 cust.firstVisitDate = b.bookingDate;
@@ -232,10 +258,10 @@ export default function App() {
     return initialProcedures;
   });
 
-  // Persist datasets to LocalStorage
+  // Persist datasets to LocalStorage (v10 reconciled customers & bookings; v5/v8 settings preserved)
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_customers_v9', JSON.stringify(customers));
+      localStorage.setItem('wellthera_customers_v10', JSON.stringify(customers));
     } catch (e) {
       console.warn('Failed to persist customers', e);
     }
@@ -251,7 +277,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_bookings_v9', JSON.stringify(bookings));
+      localStorage.setItem('wellthera_bookings_v10', JSON.stringify(bookings));
     } catch (e) {
       console.warn('Failed to persist bookings', e);
     }
@@ -336,7 +362,7 @@ export default function App() {
       isSyncing: false,
       syncMessage: envWebhookUrl
         ? 'Webhook configured via environment variable.'
-        : 'Ready to create a clean Google Sheet with all 1,176 ClinicSense patients and 5 Origin/Partner tags.',
+        : 'Ready to sync all 1,182 ClinicSense patients, 3,929 appointments & $468.9k collected payments to Google Sheets.',
     };
   });
 
@@ -562,9 +588,9 @@ export default function App() {
         (c) => c.status === 'Active' || c.status === 'VIP'
       ).length;
 
-      // Find all COMPLETED bookings linked to this partner (never count Upcoming/Cancelled in realized revenue)
+      // Find all billable bookings linked to this partner (Completed visits + paid late-cancel/no-show fees)
       const partnerBookings = currentBookings.filter((b) => {
-        if (b.status !== 'Completed') return false;
+        if (!isBillableBooking(b)) return false;
         if (partnerIsNoPartner) {
           return isNoPartnerId(b.partnerId);
         }
@@ -1018,13 +1044,14 @@ export default function App() {
       // Payment filter
       if (
         filters.paymentType === 'directBilling' &&
-        (c.insuranceProvider === 'None / Self-Pay' || !c.insuranceProvider)
+        (c.insuranceProvider === 'None / Self-Pay' ||
+          c.insuranceProvider === 'Not Recorded' ||
+          !c.insuranceProvider)
       ) {
         return false;
       }
       if (
         filters.paymentType === 'outOfPocket' &&
-        c.insuranceProvider &&
         c.insuranceProvider !== 'None / Self-Pay'
       ) {
         return false;
@@ -1196,9 +1223,13 @@ export default function App() {
   }, [cacChannels, filters.selectedPartners, partners, filteredCustomers]);
 
   const filteredTotalRevenue = useMemo(() => {
-    return filteredBookings
-      .filter((b) => b.status === 'Completed')
-      .reduce((acc, b) => acc + b.priceCAD, 0);
+    return (
+      Math.round(
+        filteredBookings
+          .filter((b) => isBillableBooking(b))
+          .reduce((acc, b) => acc + b.priceCAD, 0) * 100
+      ) / 100
+    );
   }, [filteredBookings]);
 
   // Gatekeeper protection screen (protects public dashboard on Vercel)

@@ -1321,13 +1321,13 @@ git push origin feature/partner-analytics-dashboard`}
                   </p>
                   <ul className="space-y-1 pl-2 text-[11px] list-disc opacity-80">
                     <li>
-                      <strong>Partner CAC ($25.00–$87.50):</strong> Up to 70% cheaper than paid digital advertising.
+                      <strong>Partner Referral CAC:</strong> Automatically computed from logged partner commissions and co-marketing retainers divided by verified partner-referred patients.
                     </li>
                     <li>
-                      <strong>Paid Search / Meta Ads CAC ($92.86–$104.00):</strong> Useful for baseline capture.
+                      <strong>Paid Search &amp; Meta Ads CAC:</strong> Automatically computed once actual monthly Google Ads and Meta Ads spend is recorded in the CAC tab.
                     </li>
                     <li>
-                      <strong>Budget Simulator:</strong> Dynamically calculates patient yield if shifting ad spend to local wellness partnerships.
+                      <strong>LTV : CAC Comparison:</strong> Cross-references each channel&apos;s real patient lifetime spend from ClinicSense against your quarterly OKR CAC benchmark.
                     </li>
                   </ul>
                 </div>

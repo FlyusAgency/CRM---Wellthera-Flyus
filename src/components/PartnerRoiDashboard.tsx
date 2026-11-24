@@ -73,11 +73,9 @@ export const PartnerRoiDashboard: React.FC<PartnerRoiDashboardProps> = ({
       id,
       name: trimmedName,
       category: partnerCategory,
-      contactPerson: partnerContact.trim() || 'Clinic Partner Contact',
-      email:
-        partnerEmail.trim() ||
-        `contact@${trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'partner'}.ca`,
-      phone: partnerPhone.trim() || '(705) 555-0100',
+      contactPerson: partnerContact.trim(),
+      email: partnerEmail.trim(),
+      phone: partnerPhone.trim(),
       commissionType: partnerCommType,
       commissionValue: Number.isFinite(Number(partnerCommVal)) ? Number(partnerCommVal) : 0,
       referralCode: autoCode,

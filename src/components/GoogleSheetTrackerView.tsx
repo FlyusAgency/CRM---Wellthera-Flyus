@@ -253,6 +253,40 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
     return filteredCustomersList.slice(start, start + customerPageSize);
   }, [filteredCustomersList, customerPage, customerPageSize]);
 
+  // Bookings Filter & Pagination State (ClinicSense 3,929 reconciled appointments)
+  const [bookingSearch, setBookingSearch] = useState<string>('');
+  const [bookingCategoryFilter, setBookingCategoryFilter] = useState<string>('all');
+  const [bookingPage, setBookingPage] = useState<number>(1);
+  const [bookingPageSize, setBookingPageSize] = useState<number>(25);
+
+  const filteredBookingsList = useMemo(() => {
+    return bookings.filter((b) => {
+      if (bookingSearch.trim()) {
+        const q = bookingSearch.toLowerCase();
+        const matchId = b.id?.toLowerCase().includes(q);
+        const matchCust = b.customerName?.toLowerCase().includes(q);
+        const matchPartner = b.partnerName?.toLowerCase().includes(q);
+        const matchPract = b.therapist?.toLowerCase().includes(q);
+        const matchSvc = b.serviceTitle?.toLowerCase().includes(q);
+        const matchDate = b.bookingDate?.toLowerCase().includes(q);
+        if (!matchId && !matchCust && !matchPartner && !matchPract && !matchSvc && !matchDate) {
+          return false;
+        }
+      }
+      if (bookingCategoryFilter !== 'all' && b.serviceCategory !== bookingCategoryFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [bookings, bookingSearch, bookingCategoryFilter]);
+
+  const totalBookingPages = Math.max(1, Math.ceil(filteredBookingsList.length / bookingPageSize));
+  const paginatedBookings = useMemo(() => {
+    const safePage = Math.min(bookingPage, totalBookingPages);
+    const start = (safePage - 1) * bookingPageSize;
+    return filteredBookingsList.slice(start, start + bookingPageSize);
+  }, [filteredBookingsList, bookingPage, bookingPageSize, totalBookingPages]);
+
   // Open Partner Assignment Modal for a Customer
   const handleOpenAssignCustomerModal = (customer: Customer) => {
     setAssigningCustomer(customer);
@@ -670,8 +704,8 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
     const newCustomer: Customer = {
       id: `c-${Date.now().toString().slice(-4)}`,
       name: newCustName,
-      email: newCustEmail || `${newCustName.toLowerCase().replace(/\s+/g, '.')}@email.com`,
-      phone: newCustPhone || '(705) 555-1234',
+      email: newCustEmail.trim(),
+      phone: newCustPhone.trim(),
       partnerId: partner.id,
       partnerName: partner.name,
       referralCode: `${partner.name.slice(0, 4).toUpperCase()}-${newCustName.split(' ')[0].toUpperCase()}`,
@@ -716,11 +750,9 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
       id: `p-${slug || 'partner'}-${Date.now().toString().slice(-4)}`,
       name: trimmedName,
       category: newPartnerCategory,
-      contactPerson: newPartnerContact.trim() || 'Clinic Contact',
-      email:
-        newPartnerEmail.trim() ||
-        `contact@${trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'partner'}.ca`,
-      phone: '(705) 555-0100',
+      contactPerson: newPartnerContact.trim(),
+      email: newPartnerEmail.trim(),
+      phone: '',
       commissionType: 'Percentage',
       commissionValue: Number.isFinite(Number(newPartnerCommission))
         ? Number(newPartnerCommission)
@@ -1588,68 +1620,199 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
           </div>
         )}
 
-        {/* Tab 3: Bookings Table View */}
+        {/* Tab 3: Bookings Table View (Paginated for 3,929+ ClinicSense Appointments) */}
         {activeTab === 'bookings' && (
-          <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr
-                  className={`uppercase text-[10px] tracking-wider border-b ${
+          <div className="space-y-3">
+            {/* Bookings Filter & Pagination Toolbar */}
+            <div
+              className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
+                isDarkMode
+                  ? 'bg-[#181b11] border-[#292e1e]'
+                  : 'bg-[#f9f8f5] border-[#e7e3da]'
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
+                <div className="relative flex-1 min-w-[200px] max-w-md">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 opacity-50" />
+                  <input
+                    type="text"
+                    value={bookingSearch}
+                    onChange={(e) => {
+                      setBookingSearch(e.target.value);
+                      setBookingPage(1);
+                    }}
+                    placeholder="Search patient, practitioner, service, invoice ID, or date..."
+                    className={`w-full pl-8 pr-3 py-1.5 rounded-lg border text-xs ${
+                      isDarkMode
+                        ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-white border-[#d6d1c4] text-[#332e1e]'
+                    }`}
+                  />
+                </div>
+                <select
+                  value={bookingCategoryFilter}
+                  onChange={(e) => {
+                    setBookingCategoryFilter(e.target.value);
+                    setBookingPage(1);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs ${
                     isDarkMode
-                      ? 'bg-[#181b11] border-[#292e1e] text-[#8b927a]'
-                      : 'bg-[#f9f8f5] border-[#e7e3da] text-[#7d7663]'
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-white border-[#d6d1c4] text-[#332e1e]'
                   }`}
                 >
-                  <th className="py-2.5 px-3 font-mono font-bold">ID</th>
-                  <th className="py-2.5 px-4 font-bold text-emerald-800 dark:text-emerald-300">Customer (Patient)</th>
-                  <th className="py-2.5 px-3 font-bold">Partner Source (Click to Edit)</th>
-                  <th className="py-2.5 px-3 font-bold">Category</th>
-                  <th className="py-2.5 px-3 font-bold">Date</th>
-                  <th className="py-2.5 px-3 font-bold">Price CAD</th>
-                  <th className="py-2.5 px-3 font-bold">Insurance Billed</th>
-                  <th className="py-2.5 px-3 font-bold text-emerald-800 dark:text-emerald-300">Patient Copay</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-inherit font-mono">
-                {bookings.map((b) => (
+                  <option value="all">All Services ({bookings.length.toLocaleString()})</option>
+                  <option value="Registered Massage Therapy">Registered Massage Therapy</option>
+                  <option value="Brazilian Lymphatic Drainage">Brazilian Lymphatic Drainage</option>
+                  <option value="Acupuncture">Acupuncture</option>
+                  <option value="Psychotherapy">Psychotherapy</option>
+                  <option value="Nurse-Led Injectables">Nurse-Led Injectables</option>
+                </select>
+                <select
+                  value={bookingPageSize}
+                  onChange={(e) => {
+                    setBookingPageSize(Number(e.target.value));
+                    setBookingPage(1);
+                  }}
+                  className={`px-2 py-1.5 rounded-lg border text-xs ${
+                    isDarkMode
+                      ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                      : 'bg-white border-[#d6d1c4] text-[#332e1e]'
+                  }`}
+                >
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                  <option value={100}>100 / page</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="opacity-75 font-mono">
+                  Showing {filteredBookingsList.length === 0 ? 0 : (Math.min(bookingPage, totalBookingPages) - 1) * bookingPageSize + 1}–
+                  {Math.min(Math.min(bookingPage, totalBookingPages) * bookingPageSize, filteredBookingsList.length)} of{' '}
+                  <strong>{filteredBookingsList.length.toLocaleString()}</strong>
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={bookingPage <= 1}
+                    onClick={() => setBookingPage(1)}
+                    className="p-1 rounded border disabled:opacity-30 cursor-pointer"
+                    title="First page"
+                  >
+                    <ChevronsLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bookingPage <= 1}
+                    onClick={() => setBookingPage((p) => Math.max(1, p - 1))}
+                    className="p-1 rounded border disabled:opacity-30 cursor-pointer"
+                    title="Previous page"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="px-2 font-mono font-bold">
+                    {Math.min(bookingPage, totalBookingPages)} / {totalBookingPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={bookingPage >= totalBookingPages}
+                    onClick={() => setBookingPage((p) => Math.min(totalBookingPages, p + 1))}
+                    className="p-1 rounded border disabled:opacity-30 cursor-pointer"
+                    title="Next page"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bookingPage >= totalBookingPages}
+                    onClick={() => setBookingPage(totalBookingPages)}
+                    className="p-1 rounded border disabled:opacity-30 cursor-pointer"
+                    title="Last page"
+                  >
+                    <ChevronsRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
                   <tr
-                    key={b.id}
-                    className={`transition-colors ${
+                    className={`uppercase text-[10px] tracking-wider border-b ${
                       isDarkMode
-                        ? 'hover:bg-[#202517] border-[#292e1e]'
-                        : 'hover:bg-[#f4f1eb] border-[#e7e3da]'
+                        ? 'bg-[#181b11] border-[#292e1e] text-[#8b927a]'
+                        : 'bg-[#f9f8f5] border-[#e7e3da] text-[#7d7663]'
                     }`}
                   >
-                    <td className="py-2.5 px-3 opacity-60">{b.id}</td>
-                    <td className="py-2.5 px-4 font-sans whitespace-nowrap">
-                      <span className="font-bold text-sm text-emerald-950 dark:text-emerald-100 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 px-2 py-0.5 rounded-md inline-block shadow-2xs">
-                        {b.customerName}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 font-sans text-xs whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAssignBookingModal(b)}
-                        className="px-2 py-1 rounded-md text-xs font-semibold bg-neutral-100 dark:bg-neutral-800 hover:bg-[#686e4a]/20 flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-300 dark:border-neutral-700"
-                        title="Click to edit partner source for this appointment log"
-                      >
-                        <span>{b.partnerName || 'No partner'}</span>
-                        <Pencil className="w-2.5 h-2.5 opacity-60" />
-                      </button>
-                    </td>
-                    <td className="py-2.5 px-3 font-sans text-xs">{b.serviceCategory}</td>
-                    <td className="py-2.5 px-3 text-xs">{b.bookingDate}</td>
-                    <td className="py-2.5 px-3 font-bold">${b.priceCAD}</td>
-                    <td className="py-2.5 px-3 text-[#686e4a] dark:text-[#aab187]">
-                      ${b.insuranceBilledCAD}
-                    </td>
-                    <td className="py-2.5 px-3 font-bold text-emerald-700 dark:text-emerald-300">
-                      ${b.patientPaidCAD}
-                    </td>
+                    <th className="py-2.5 px-3 font-mono font-bold">Invoice / ID</th>
+                    <th className="py-2.5 px-3 font-bold">Date</th>
+                    <th className="py-2.5 px-4 font-bold text-emerald-800 dark:text-emerald-300">Customer (Patient)</th>
+                    <th className="py-2.5 px-3 font-bold">Partner Source</th>
+                    <th className="py-2.5 px-3 font-bold">Service &amp; Practitioner</th>
+                    <th className="py-2.5 px-3 font-bold">Price CAD</th>
+                    <th className="py-2.5 px-3 font-bold">Insurance</th>
+                    <th className="py-2.5 px-3 font-bold text-emerald-800 dark:text-emerald-300">Out-of-Pocket</th>
+                    <th className="py-2.5 px-3 font-bold">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-inherit font-mono">
+                  {paginatedBookings.map((b) => (
+                    <tr
+                      key={b.id}
+                      className={`transition-colors ${
+                        isDarkMode
+                          ? 'hover:bg-[#202517] border-[#292e1e]'
+                          : 'hover:bg-[#f4f1eb] border-[#e7e3da]'
+                      }`}
+                    >
+                      <td className="py-2.5 px-3 opacity-60 whitespace-nowrap">{b.id}</td>
+                      <td className="py-2.5 px-3 text-xs whitespace-nowrap">{b.bookingDate}</td>
+                      <td className="py-2.5 px-4 font-sans whitespace-nowrap">
+                        <span className="font-bold text-sm text-emerald-950 dark:text-emerald-100 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 px-2 py-0.5 rounded-md inline-block shadow-2xs">
+                          {b.customerName}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 font-sans text-xs whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAssignBookingModal(b)}
+                          className="px-2 py-1 rounded-md text-xs font-semibold bg-neutral-100 dark:bg-neutral-800 hover:bg-[#686e4a]/20 flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-300 dark:border-neutral-700"
+                          title="Click to edit partner source for this appointment log"
+                        >
+                          <span>{b.partnerName || 'No partner'}</span>
+                          <Pencil className="w-2.5 h-2.5 opacity-60" />
+                        </button>
+                      </td>
+                      <td className="py-2.5 px-3 font-sans text-xs">
+                        <div className="font-semibold">{b.serviceTitle}</div>
+                        <div className="text-[11px] opacity-70">{b.therapist} · {b.serviceCategory}</div>
+                      </td>
+                      <td className="py-2.5 px-3 font-bold whitespace-nowrap">${b.priceCAD.toFixed(2)}</td>
+                      <td className="py-2.5 px-3 text-[#686e4a] dark:text-[#aab187] whitespace-nowrap">
+                        ${b.insuranceBilledCAD.toFixed(2)}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                        ${b.patientPaidCAD.toFixed(2)}
+                      </td>
+                      <td className="py-2.5 px-3 font-sans whitespace-nowrap">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            b.status === 'Completed'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                              : b.status === 'Cancelled'
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                              : 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300'
+                          }`}
+                        >
+                          {b.status === 'Cancelled' && b.priceCAD > 0 ? 'Fee Paid' : b.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

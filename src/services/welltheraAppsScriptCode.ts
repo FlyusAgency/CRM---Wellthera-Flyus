@@ -24,7 +24,31 @@ export function generateWelltheraAppsScript(
 ): string {
   const customersJson = JSON.stringify(customers);
   const partnersJson = JSON.stringify(partners, null, 2);
-  const bookingsJson = JSON.stringify(bookings);
+  const bPartners = Array.from(new Set(bookings.map((b) => b.partnerName || 'No partner')));
+  const bCats = Array.from(new Set(bookings.map((b) => b.serviceCategory || 'Registered Massage Therapy')));
+  const bTitles = Array.from(new Set(bookings.map((b) => b.serviceTitle || '')));
+  const bTherapists = Array.from(new Set(bookings.map((b) => b.therapist || '')));
+  const bTuples = bookings.map((b) => [
+    b.id,
+    b.bookingDate,
+    b.customerName,
+    bPartners.indexOf(b.partnerName || 'No partner'),
+    bCats.indexOf(b.serviceCategory || 'Registered Massage Therapy'),
+    bTitles.indexOf(b.serviceTitle || ''),
+    bTherapists.indexOf(b.therapist || ''),
+    b.durationMinutes,
+    b.priceCAD,
+    b.insuranceBilledCAD,
+    b.patientPaidCAD,
+    b.status === 'Completed' ? 1 : b.status === 'Cancelled' ? 0 : 2,
+  ]);
+  const bookingsCompactJson = JSON.stringify({
+    p: bPartners,
+    c: bCats,
+    t: bTitles,
+    th: bTherapists,
+    r: bTuples,
+  });
   const cacChannelsJson = JSON.stringify(cacChannels, null, 2);
   const practitionersJson = JSON.stringify(practitioners, null, 2);
   const proceduresJson = JSON.stringify(procedures, null, 2);
@@ -33,7 +57,7 @@ export function generateWelltheraAppsScript(
   return `/**
  * =========================================================================
  * WELLTHERA INTEGRATED HEALTH — GOOGLE SHEETS SETUP & AUTOMATION
- * Version: 5.0 — UPDATED CLINICSENSE DATABASE (${customers.length.toLocaleString()} PATIENTS),
+ * Version: 5.1 — FULL 3-REPORT CLINICSENSE RECONCILIATION (${customers.length.toLocaleString()} PATIENTS, ${bookings.length.toLocaleString()} APPOINTMENTS),
  * OKRS & QUARTERLY GOALS, PRACTITIONERS, PROCEDURES & FULL 2-WAY SYNC
  *
  * Target Google Drive Folder:
@@ -52,8 +76,8 @@ export function generateWelltheraAppsScript(
  * WHAT IT BUILDS AUTOMATICALLY:
  * - 🛎️ FRONT DESK DASHBOARD (Tab 1: Type patient name to search history across all ${customers.length.toLocaleString()} patients,
  *   view visits, past spend, and log new appointments with 1 click in the top menu or interactive checkbox!)
- * - 👥 Customers & RFM (All ${customers.length.toLocaleString()} ClinicSense Patients, Contact, Insurance, and RFM Segmentation)
- * - 📅 Services & Bookings Log (Detailed Appointment Logs and Insurance/Copay Splits)
+ * - 👥 Customers & RFM (All ${customers.length.toLocaleString()} ClinicSense Patients, Contact, Billing Type, and Real RFM Segmentation)
+ * - 📅 Services & Bookings Log (All ${bookings.length.toLocaleString()} Real Appointments with Direct Insurance & Out-of-Pocket Splits)
  * - 🤝 Partners & ROI (Referral Partners, Clinics, Gyms, and Commissions)
  * - 💰 CAC & Channel Costs (Acquisition Costs and Marketing Metrics)
  * - 👩‍⚕️ Practitioners & Team (Registered Massage Therapists, Acupuncturist, Psychotherapist, Nurse Injector)
@@ -63,12 +87,28 @@ export function generateWelltheraAppsScript(
  * =========================================================================
  */
 
-// Data synchronized in real-time from the Wellthera Portal (2026-11-22 ClinicSense Export)
+// Data synchronized in real-time from the Wellthera Portal (2026-11-24 Full 3-Report ClinicSense Export)
 const INITIAL_CUSTOMERS = ${customersJson};
 
 const INITIAL_PARTNERS = ${partnersJson};
 
-const INITIAL_BOOKINGS = ${bookingsJson};
+const _BOOKINGS_PACK = ${bookingsCompactJson};
+const INITIAL_BOOKINGS = _BOOKINGS_PACK.r.map(function(x) {
+  return {
+    id: x[0],
+    bookingDate: x[1],
+    customerName: x[2],
+    partnerName: _BOOKINGS_PACK.p[x[3]] || 'No partner',
+    serviceCategory: _BOOKINGS_PACK.c[x[4]] || 'Registered Massage Therapy',
+    serviceTitle: _BOOKINGS_PACK.t[x[5]] || '',
+    therapist: _BOOKINGS_PACK.th[x[6]] || '',
+    durationMinutes: x[7],
+    priceCAD: x[8],
+    insuranceBilledCAD: x[9],
+    patientPaidCAD: x[10],
+    status: x[11] === 1 ? 'Completed' : (x[11] === 0 ? 'Cancelled' : 'Upcoming')
+  };
+});
 
 const INITIAL_CAC_CHANNELS = ${cacChannelsJson};
 
@@ -308,14 +348,15 @@ function setupFrontDeskDashboard(ss) {
 
   const therapistRule = SpreadsheetApp.newDataValidation()
     .requireValueInList([
-      'Camila Dos Santos, RMT',
-      'Kiana Forder, R.Ac',
-      'Yuki Hamada, RMT',
-      'Rachel Wallace, RMT',
-      'Liz Cerato, RMT',
-      'Thaisa Sakima, RMT',
-      'Giovanna Faedo, RP',
-      'Elise K. Papa, RN (Injector)'
+      'Camila Dos Santos',
+      'Elizabeth Cerato Reveilleau',
+      'Yukiko Hamada',
+      'Rachel Wallace',
+      'Thaisa Sakima',
+      'Djuna Andrade Cunha',
+      'Kiana Forder',
+      'Giovanna Faedo',
+      'Elise K. Papa'
     ], true).build();
   sheet.getRange('C8').setDataValidation(therapistRule);
 
@@ -344,15 +385,15 @@ function setupFrontDeskDashboard(ss) {
     .setVerticalAlignment('middle');
 
   sheet.getRange('B16').setValue('Patient Phone:').setFontWeight('bold');
-  sheet.getRange('C16').setValue('(705) 555-0199').setBackground('#ffffff');
+  sheet.getRange('C16').setValue('').setBackground('#ffffff');
   
   sheet.getRange('E16').setValue('Patient Email:').setFontWeight('bold');
-  sheet.getRange('F16').setValue('new.patient@gmail.com').setBackground('#ffffff');
+  sheet.getRange('F16').setValue('').setBackground('#ffffff');
 
   sheet.getRange('B17').setValue('Insurance Provider:').setFontWeight('bold');
-  sheet.getRange('C17').setValue('Sun Life').setBackground('#ffffff');
+  sheet.getRange('C17').setValue('None / Self-Pay').setBackground('#ffffff');
   const insuranceRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['Sun Life', 'Manulife', 'Canada Life', 'Green Shield Canada', 'Blue Cross', 'None / Self-Pay'], true).build();
+    .requireValueInList(['Direct Insurance Billing', 'Sun Life', 'Manulife', 'Canada Life', 'Green Shield Canada', 'Blue Cross', 'None / Self-Pay'], true).build();
   sheet.getRange('C17').setDataValidation(insuranceRule);
 
   sheet.getRange('E17').setValue('Referral Code:').setFontWeight('bold');
@@ -632,7 +673,11 @@ function setupBookingsSheet(ss) {
   ]);
 
   if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+    const CHUNK = 1500;
+    for (let start = 0; start < rows.length; start += CHUNK) {
+      const slice = rows.slice(start, start + CHUNK);
+      sheet.getRange(2 + start, 1, slice.length, headers.length).setValues(slice);
+    }
     sheet.getRange(2, 2, rows.length, 1).setNumberFormat('yyyy-mm-dd');
     sheet.getRange(2, 9, rows.length, 3).setNumberFormat('$#,##0.00');
   }
@@ -645,11 +690,11 @@ function setupBookingsSheet(ss) {
       'Nurse-Led Injectables',
       'Psychotherapy'
     ], true).build();
-  sheet.getRange('E2:E5000').setDataValidation(serviceRule);
+  sheet.getRange('E2:E15000').setDataValidation(serviceRule);
 
   const statusRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(['Completed', 'Upcoming', 'Cancelled'], true).build();
-  sheet.getRange('L2:L5000').setDataValidation(statusRule);
+  sheet.getRange('L2:L15000').setDataValidation(statusRule);
 
   sheet.autoResizeColumns(1, headers.length);
 }
@@ -1075,7 +1120,7 @@ function refreshAllDropdownRules() {
       custSheet.getRange('E2:E5000').setDataValidation(partnerRangeRule);
     }
     if (bookSheet) {
-      bookSheet.getRange('D2:D5000').setDataValidation(partnerRangeRule);
+      bookSheet.getRange('D2:D15000').setDataValidation(partnerRangeRule);
     }
   }
 }
@@ -1197,7 +1242,11 @@ function doPost(e) {
             Number(b.insuranceBilledCAD) || 0, Number(b.patientPaidCAD) || 0, b.status || 'Completed'
           ];
         });
-        bookSheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+        const CHUNK = 1500;
+        for (let start = 0; start < rows.length; start += CHUNK) {
+          const slice = rows.slice(start, start + CHUNK);
+          bookSheet.getRange(2 + start, 1, slice.length, headers.length).setValues(slice);
+        }
         bookSheet.getRange(2, 9, rows.length, 3).setNumberFormat('$#,##0.00');
         bookSheet.setFrozenRows(1);
       }

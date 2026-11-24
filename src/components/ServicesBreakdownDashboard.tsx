@@ -27,24 +27,32 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
   ];
 
   const completedBookings = bookings.filter((b) => b.status === 'Completed');
+  const billableBookings = bookings.filter(
+    (b) => b.status === 'Completed' || (b.status === 'Cancelled' && (b.priceCAD || 0) > 0)
+  );
+  const feeOnlyCancelledCount = billableBookings.length - completedBookings.length;
 
   const serviceStats = categories.map((cat) => {
-    const list = completedBookings.filter((b) => b.serviceCategory === cat);
-    const totalRev = list.reduce((acc, b) => acc + b.priceCAD, 0);
-    const insuranceRev = list.reduce((acc, b) => acc + b.insuranceBilledCAD, 0);
-    const patientRev = list.reduce((acc, b) => acc + b.patientPaidCAD, 0);
-    const avgTicket = list.length > 0 ? totalRev / list.length : 0;
+    const completedList = completedBookings.filter((b) => b.serviceCategory === cat);
+    const billableList = billableBookings.filter((b) => b.serviceCategory === cat);
+    const totalRev =
+      Math.round(billableList.reduce((acc, b) => acc + b.priceCAD, 0) * 100) / 100;
+    const insuranceRev =
+      Math.round(billableList.reduce((acc, b) => acc + b.insuranceBilledCAD, 0) * 100) / 100;
+    const patientRev =
+      Math.round(billableList.reduce((acc, b) => acc + b.patientPaidCAD, 0) * 100) / 100;
+    const avgTicket = completedList.length > 0 ? totalRev / completedList.length : 0;
 
     // Dominant partner
     const partnerCounts: Record<string, number> = {};
-    list.forEach((b) => {
+    billableList.forEach((b) => {
       partnerCounts[b.partnerName] = (partnerCounts[b.partnerName] || 0) + 1;
     });
     const topPartner = Object.entries(partnerCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'No partner';
 
     return {
       category: cat,
-      bookingCount: list.length,
+      bookingCount: completedList.length,
       totalRevenueCAD: totalRev,
       insuranceBilledCAD: insuranceRev,
       patientPaidCAD: patientRev,
@@ -54,19 +62,26 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
     };
   });
 
-  const grandTotalRevenue = completedBookings.reduce((acc, b) => acc + b.priceCAD, 0);
-  const totalInsuranceBilled = completedBookings.reduce((acc, b) => acc + b.insuranceBilledCAD, 0);
-  const totalPatientPaid = completedBookings.reduce((acc, b) => acc + b.patientPaidCAD, 0);
+  const grandTotalRevenue =
+    Math.round(billableBookings.reduce((acc, b) => acc + b.priceCAD, 0) * 100) / 100;
+  const totalInsuranceBilled =
+    Math.round(billableBookings.reduce((acc, b) => acc + b.insuranceBilledCAD, 0) * 100) / 100;
+  const totalPatientPaid =
+    Math.round(billableBookings.reduce((acc, b) => acc + b.patientPaidCAD, 0) * 100) / 100;
 
-  // Therapist breakdown
+  // Therapist breakdown (sorted by revenue descending)
   const therapistCounts: Record<string, { count: number; rev: number; specialty: string }> = {};
-  completedBookings.forEach((b) => {
+  billableBookings.forEach((b) => {
     if (!therapistCounts[b.therapist]) {
       therapistCounts[b.therapist] = { count: 0, rev: 0, specialty: b.serviceCategory };
     }
-    therapistCounts[b.therapist].count += 1;
-    therapistCounts[b.therapist].rev += b.priceCAD;
+    if (b.status === 'Completed') {
+      therapistCounts[b.therapist].count += 1;
+    }
+    therapistCounts[b.therapist].rev =
+      Math.round((therapistCounts[b.therapist].rev + b.priceCAD) * 100) / 100;
   });
+  const sortedTherapists = Object.entries(therapistCounts).sort((a, b) => b[1].rev - a[1].rev);
 
   return (
     <div className="space-y-6">
@@ -165,14 +180,14 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
               Completed Appointments
             </span>
             <div className="text-2xl font-bold font-serif mt-1">
-              {bookings.length} Sessions
+              {completedBookings.length.toLocaleString()} Sessions
             </div>
             <span
               className={`text-[11px] mt-1 block ${
                 isDarkMode ? 'text-[#8b927a]' : 'text-[#7d7663]'
               }`}
             >
-              Avg ticket: ${bookings.length > 0 ? (grandTotalRevenue / bookings.length).toFixed(0) : '0'} CAD
+              Avg ticket: ${completedBookings.length > 0 ? (grandTotalRevenue / completedBookings.length).toFixed(2) : '0.00'} CAD{feeOnlyCancelledCount > 0 ? ` · +${feeOnlyCancelledCount} paid fees` : ''}
             </span>
           </div>
           <div
@@ -389,7 +404,7 @@ export const ServicesBreakdownDashboard: React.FC<ServicesBreakdownDashboardProp
           </h4>
 
           <div className="space-y-3">
-            {Object.entries(therapistCounts).map(([therapist, data]) => (
+            {sortedTherapists.map(([therapist, data]) => (
               <div
                 key={therapist}
                 className={`p-3.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${

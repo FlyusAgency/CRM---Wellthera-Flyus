@@ -113,9 +113,9 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
   const [insuranceBilledCAD, setInsuranceBilledCAD] = useState(120);
   const [status, setStatus] = useState<'Completed' | 'Upcoming'>('Completed');
   const [autoRegisterCustomer, setAutoRegisterCustomer] = useState(false);
-  const [patientPhone, setPatientPhone] = useState('(705) 555-0199');
+  const [patientPhone, setPatientPhone] = useState('');
   const [patientEmail, setPatientEmail] = useState('');
-  const [insuranceProvider, setInsuranceProvider] = useState('Sun Life');
+  const [insuranceProvider, setInsuranceProvider] = useState('None / Self-Pay');
 
   // Keep selected partnerId valid whenever partners / historical origins update
   useEffect(() => {
@@ -261,8 +261,8 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
       onAddNewCustomer({
         id: newBooking.customerId,
         name: customerName.trim(),
-        email: patientEmail || `${customerName.toLowerCase().replace(/\s+/g, '.')}@email.com`,
-        phone: patientPhone || '(705) 555-0100',
+        email: patientEmail.trim(),
+        phone: patientPhone.trim(),
         partnerId: selectedOrigin.id,
         partnerName: selectedOrigin.name,
         referralCode:
@@ -275,7 +275,7 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
         totalVisits: 1,
         totalSpendCAD: Number(priceCAD) || 0,
         preferredService: serviceCategory,
-        insuranceProvider: insuranceProvider || 'Sun Life',
+        insuranceProvider: insuranceProvider || 'None / Self-Pay',
         status: 'Active',
         recencyDays: 0,
         recencyScore: 5,

@@ -32,18 +32,25 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
   onNavigateTab,
   isDarkMode = false,
 }) => {
+  const billableBookings = bookings.filter(
+    (b) => b.status === 'Completed' || (b.status === 'Cancelled' && (b.priceCAD || 0) > 0)
+  );
   const completedBookings = bookings.filter((b) => b.status === 'Completed');
-  const totalRevenue = completedBookings.reduce((acc, b) => acc + b.priceCAD, 0);
-  const totalInsurance = completedBookings.reduce((acc, b) => acc + b.insuranceBilledCAD, 0);
+  const totalRevenue =
+    Math.round(billableBookings.reduce((acc, b) => acc + b.priceCAD, 0) * 100) / 100;
+  const totalInsurance =
+    Math.round(billableBookings.reduce((acc, b) => acc + b.insuranceBilledCAD, 0) * 100) / 100;
   const referralPartners = partners.filter(
     (p) => p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct'
   );
-  const partnerGross = referralPartners.reduce((acc, p) => acc + p.totalRevenueCAD, 0);
+  const partnerGross =
+    Math.round(referralPartners.reduce((acc, p) => acc + p.totalRevenueCAD, 0) * 100) / 100;
   const partnerCommissions = referralPartners.reduce((acc, p) => acc + p.totalCommissionPaidCAD, 0);
   const partnerRetainers = referralPartners.reduce((acc, p) => acc + p.monthlyRetainerCAD * 6, 0);
   const partnerCost = partnerCommissions + partnerRetainers;
-  const netPartnerRev = partnerGross - partnerCost;
-  const partnerRoi = partnerCost > 0 ? (netPartnerRev / partnerCost) * 100 : 0;
+  const netPartnerRev = Math.round((partnerGross - partnerCost) * 100) / 100;
+  const partnerRoi =
+    partnerCost > 0 ? (netPartnerRev / partnerCost) * 100 : partnerGross > 0 ? 100 : 0;
 
   const totalMarketingSpend = cacChannels.reduce((acc, c) => acc + c.spendCAD, 0);
   const paidChannelsWithSpend = cacChannels.filter((c) => c.spendCAD > 0);
@@ -53,31 +60,58 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
       ? totalMarketingSpend / paidAcquiredPatients
       : 0;
   const totalCustomerSpend = customers.reduce((acc, c) => acc + (c.totalSpendCAD || 0), 0);
-  const avgLtv = customers.length > 0 ? totalCustomerSpend / customers.length : 0;
+  const paidCustomersCount = customers.filter((c) => c.totalSpendCAD > 0).length;
+  const avgLtv = paidCustomersCount > 0 ? totalCustomerSpend / paidCustomersCount : 0;
   const ltvCacRatio = blendedCac > 0 && avgLtv > 0 ? avgLtv / blendedCac : 0;
 
   const championsCount = customers.filter((c) => c.rfmSegment === 'Champions').length;
   const loyalCount = customers.filter((c) => c.rfmSegment === 'Loyal Customers').length;
   const atRiskCount = customers.filter((c) => c.rfmSegment === 'At Risk' || c.rfmSegment === "Can't Lose Them").length;
+  const avgTicket =
+    completedBookings.length > 0 ? totalRevenue / completedBookings.length : 0;
+  const atRiskRecoveryEst = Math.round(atRiskCount * avgTicket);
 
-  const [selectedQuarterId, setSelectedQuarterId] = React.useState<string>(
-    okrPlans[0]?.id || 'q1-2026'
-  );
+  const defaultQuarterId =
+    okrPlans.find((p) => p.quarter === 'Q4 2026')?.id ||
+    okrPlans[okrPlans.length - 1]?.id ||
+    'okr-2026-q4';
+
+  const [selectedQuarterId, setSelectedQuarterId] = React.useState<string>(defaultQuarterId);
 
   // Sync selected quarter if okrPlans changes
   React.useEffect(() => {
     if (okrPlans.length > 0 && !okrPlans.some((p) => p.id === selectedQuarterId)) {
-      setSelectedQuarterId(okrPlans[0].id);
+      setSelectedQuarterId(defaultQuarterId);
     }
-  }, [okrPlans, selectedQuarterId]);
+  }, [okrPlans, selectedQuarterId, defaultQuarterId]);
 
   const activeOkrPlan =
     okrPlans.find((p) => p.id === selectedQuarterId) || okrPlans[0];
 
-  // OKR Cross-referencing calculations
-  const okrRevGoal = activeOkrPlan?.revenueGoalCAD || 180000;
-  const revPct = Math.round((totalRevenue / Math.max(okrRevGoal, 1)) * 100);
-  const revVarianceCAD = totalRevenue - okrRevGoal;
+  // Quarter-scoped actual revenue for accurate OKR pacing
+  const quarterRevenue = React.useMemo(() => {
+    if (!activeOkrPlan) return totalRevenue;
+    const match = activeOkrPlan.quarter.match(/Q([1-4])\s+(\d{4})/i);
+    if (!match) return totalRevenue;
+    const q = parseInt(match[1], 10);
+    const yr = parseInt(match[2], 10);
+    const startMo = (q - 1) * 3 + 1;
+    const endMo = q * 3;
+    const startIso = `${yr}-${String(startMo).padStart(2, '0')}-01`;
+    const endIso = `${yr}-${String(endMo).padStart(2, '0')}-31`;
+    return (
+      Math.round(
+        billableBookings
+          .filter((b) => b.bookingDate >= startIso && b.bookingDate <= endIso)
+          .reduce((sum, b) => sum + (b.priceCAD || 0), 0) * 100
+      ) / 100
+    );
+  }, [activeOkrPlan, billableBookings, totalRevenue]);
+
+  // OKR Cross-referencing calculations (using actual quarter revenue against quarterly OKR goal)
+  const okrRevGoal = activeOkrPlan?.revenueGoalCAD || 150000;
+  const revPct = Math.round((quarterRevenue / Math.max(okrRevGoal, 1)) * 100);
+  const revVarianceCAD = quarterRevenue - okrRevGoal;
   const revVariancePct = Math.round((revVarianceCAD / Math.max(okrRevGoal, 1)) * 100);
 
   const okrCacBenchmark = activeOkrPlan?.cacBenchmarkCAD || 40.0;
@@ -159,7 +193,7 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
                   isDarkMode ? 'text-[#8b927a]' : 'text-[#6e6856]'
                 }`}
               >
-                Pacing against <strong>{activeOkrPlan.quarter}</strong> OKR plan: <strong>${totalRevenue.toLocaleString()} CAD</strong> actual revenue logged ({revPct}% of goal) • Blended CAC is <strong>${blendedCac.toFixed(2)} CAD</strong>.
+                Pacing against <strong>{activeOkrPlan.quarter}</strong> OKR plan: <strong>${quarterRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAD</strong> collected in {activeOkrPlan.quarter} ({revPct}% of ${okrRevGoal.toLocaleString()} goal) • Filtered Total: <strong>${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAD</strong>.
               </p>
             </div>
           </div>
@@ -180,14 +214,14 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Total Clinic Revenue"
-          value={`$${totalRevenue.toLocaleString()} CAD`}
-          subValue={`${revPct}% of ${activeOkrPlan ? activeOkrPlan.quarter : 'Q1'} Goal`}
+          value={`$${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAD`}
+          subValue={`${activeOkrPlan ? activeOkrPlan.quarter : 'Quarter'}: $${quarterRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${revPct}% of Goal)`}
           changePercent={revVariancePct}
           changeLabel={revVariancePct >= 0 ? 'ahead of OKR goal' : 'vs OKR goal'}
           targetInfo={
             activeOkrPlan
-              ? `OKR Goal: $${okrRevGoal.toLocaleString()} CAD`
-              : 'Goal: $180,000 CAD'
+              ? `${activeOkrPlan.quarter} Goal: $${okrRevGoal.toLocaleString()} CAD`
+              : 'Goal: $150,000 CAD'
           }
           color="olive"
           isDarkMode={isDarkMode}
@@ -281,16 +315,19 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
             </p>
 
             <div className="space-y-3">
-              {referralPartners.slice(0, 4).map((p) => {
-                const pct = partnerGross > 0 ? ((p.totalRevenueCAD / partnerGross) * 100).toFixed(0) : 0;
-                return (
-                  <div key={p.id} className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="font-medium truncate max-w-[170px]">{p.name}</span>
-                      <span className="font-mono text-[#686e4a] dark:text-[#aab187] font-semibold">
-                        +{p.roiPercent.toFixed(0)}% ROI (${p.totalRevenueCAD})
-                      </span>
-                    </div>
+              {[...referralPartners]
+                .sort((a, b) => b.totalRevenueCAD - a.totalRevenueCAD)
+                .slice(0, 4)
+                .map((p) => {
+                  const pct = partnerGross > 0 ? ((p.totalRevenueCAD / partnerGross) * 100).toFixed(0) : 0;
+                  return (
+                    <div key={p.id} className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="font-medium truncate max-w-[165px]">{p.name}</span>
+                        <span className="font-mono text-[#686e4a] dark:text-[#aab187] font-semibold">
+                          ${p.totalRevenueCAD.toLocaleString(undefined, { maximumFractionDigits: 0 })} ({p.referredCustomersCount} pts)
+                        </span>
+                      </div>
                     <div
                       className={`w-full rounded-full h-2 overflow-hidden border ${
                         isDarkMode
@@ -413,7 +450,7 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
               <strong className={isDarkMode ? 'text-[#f9f8f5]' : 'text-[#100e0a]'}>
                 Retention Focus:{' '}
               </strong>
-              {atRiskCount} valued patients haven't booked in &gt;90 days. Dedicated recall offers before year-end insurance expiration can recover ~$3,200 CAD.
+              {atRiskCount} repeat patients haven't booked in &gt;90 days. A single return visit per patient at the clinic's ${avgTicket.toFixed(0)} avg ticket represents ~${atRiskRecoveryEst.toLocaleString()} CAD in recoverable revenue.
             </p>
           </div>
 
@@ -466,22 +503,14 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
                   : 'bg-[#f9f8f5] border-[#e7e3da]'
               }`}
             >
-              <div className="flex justify-between">
-                <span className="font-sans opacity-75">Physio Referral CAC:</span>
-                <span className="text-[#686e4a] dark:text-[#aab187] font-bold">$25.00 CAD</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-sans opacity-75">Crossfit Co-Marketing CAC:</span>
-                <span className="text-[#686e4a] dark:text-[#aab187] font-bold">$87.50 CAD</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-sans opacity-75">Google Local Search Ads:</span>
-                <span className="font-bold opacity-90">$92.86 CAD</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-sans opacity-75">Meta Instagram Ads:</span>
-                <span className="font-bold opacity-90">$104.00 CAD</span>
-              </div>
+              {cacChannels.slice(0, 5).map((ch) => (
+                <div key={ch.id} className="flex justify-between gap-2">
+                  <span className="font-sans opacity-80 truncate">{ch.partnerOrChannel}:</span>
+                  <span className="text-[#686e4a] dark:text-[#aab187] font-bold shrink-0">
+                    {ch.newCustomersAcquired} pts · ${ch.averageLtvCAD.toFixed(0)} LTV
+                  </span>
+                </div>
+              ))}
             </div>
 
             <div

@@ -108,28 +108,59 @@ export const OkrDashboard: React.FC<OkrDashboardProps> = ({
   const [newQuarterName, setNewQuarterName] = useState('Q1 2027');
   const [newQuarterYear, setNewQuarterYear] = useState(2027);
 
-  // Derived Actuals from System Database (Completed bookings & real recorded spend only)
-  const completedBookings = bookings.filter((b) => b.status === 'Completed');
-  const totalActualRevenue = completedBookings.reduce((sum, b) => sum + (b.priceCAD || 0), 0);
+  // Derived Actuals scoped accurately to the active quarter (real ClinicSense bookings & payments)
+  const billableBookings = bookings.filter(
+    (b) => b.status === 'Completed' || (b.status === 'Cancelled' && (b.priceCAD || 0) > 0)
+  );
+  const quarterMatch = activePlan?.quarter?.match(/Q([1-4])\s+(\d{4})/i);
+  const quarterStartIso = quarterMatch
+    ? `${quarterMatch[2]}-${String((parseInt(quarterMatch[1], 10) - 1) * 3 + 1).padStart(2, '0')}-01`
+    : '';
+  const quarterEndIso = quarterMatch
+    ? `${quarterMatch[2]}-${String(parseInt(quarterMatch[1], 10) * 3).padStart(2, '0')}-31`
+    : '';
+
+  const quarterBillableBookings = quarterMatch
+    ? billableBookings.filter(
+        (b) => b.bookingDate >= quarterStartIso && b.bookingDate <= quarterEndIso
+      )
+    : billableBookings;
+
+  const totalActualRevenue =
+    Math.round(
+      quarterBillableBookings.reduce((sum, b) => sum + (b.priceCAD || 0), 0) * 100
+    ) / 100;
+
   const totalSpend = cacChannels.reduce((sum, c) => sum + c.spendCAD, 0);
   const paidChannels = cacChannels.filter((c) => c.spendCAD > 0);
   const paidAcquired = paidChannels.reduce((sum, c) => sum + c.newCustomersAcquired, 0);
-  const totalAcquired = customers.filter((c) => Boolean(c.firstVisitDate)).length;
+  const totalAcquired = quarterMatch
+    ? customers.filter(
+        (c) =>
+          Boolean(c.firstVisitDate) &&
+          c.firstVisitDate >= quarterStartIso &&
+          c.firstVisitDate <= quarterEndIso
+      ).length
+    : customers.filter((c) => Boolean(c.firstVisitDate)).length;
   const actualBlendedCac = totalSpend > 0 && paidAcquired > 0 ? totalSpend / paidAcquired : 0;
 
   const totalCustomerSpend = customers.reduce((sum, c) => sum + (c.totalSpendCAD || 0), 0);
-  const avgLtv = customers.length > 0 ? totalCustomerSpend / customers.length : 0;
+  const paidCusts = customers.filter((c) => c.totalSpendCAD > 0).length;
+  const avgLtv = paidCusts > 0 ? totalCustomerSpend / paidCusts : 0;
   const actualLtvCac = actualBlendedCac > 0 && avgLtv > 0 ? avgLtv / actualBlendedCac : 0;
 
-  const partnerOnlyGross = partners
-    .filter((p) => p.id !== 'no-partner' && p.id !== 'p-8' && p.id !== 'direct')
-    .reduce((sum, p) => sum + p.totalRevenueCAD, 0);
+  const partnerOnlyGross = quarterBillableBookings
+    .filter((b) => b.partnerId && b.partnerId !== 'no-partner' && b.partnerId !== 'p-8' && b.partnerId !== 'direct')
+    .reduce((sum, b) => sum + (b.priceCAD || 0), 0);
   const actualPartnerShare =
-    totalActualRevenue > 0 ? (partnerOnlyGross / totalActualRevenue) * 100 : 64.2;
+    totalActualRevenue > 0 ? (partnerOnlyGross / totalActualRevenue) * 100 : 0;
 
-  const repeatPatientsCount = customers.filter((c) => c.totalVisits >= 2).length;
+  const activeVisitedCustomers = customers.filter((c) => c.totalVisits >= 1);
+  const repeatPatientsCount = activeVisitedCustomers.filter((c) => c.totalVisits >= 2).length;
   const actualRetentionRate =
-    customers.length > 0 ? (repeatPatientsCount / customers.length) * 100 : 68.5;
+    activeVisitedCustomers.length > 0
+      ? (repeatPatientsCount / activeVisitedCustomers.length) * 100
+      : 0;
 
   // Open Edit Targets
   const handleOpenEditTargets = () => {

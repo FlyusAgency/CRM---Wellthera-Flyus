@@ -190,7 +190,7 @@ export const GatekeeperLogin: React.FC<GatekeeperLoginProps> = ({
           {/* Footer note */}
           <div className="mt-6 pt-4 border-t border-inherit text-center space-y-1 text-[11px] opacity-70">
             <p>Wellthera Integrated Health • Barrie Clinic</p>
-            <p>464 Big Bay Point Rd, Barrie, ON • (705) 555-0100</p>
+            <p>464 Big Bay Point Rd, Barrie, ON • (705) 730-1000</p>
           </div>
         </div>
       </div>
