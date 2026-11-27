@@ -97,25 +97,162 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
     return options;
   }, [partners, customers, bookings]);
 
+  // Active practitioners & procedures driven live from Tab 5 (Practitioners) and Tab 6 (Procedures)
+  const activePractitioners = useMemo(
+    () => practitioners.filter((p) => p.status === 'Active'),
+    [practitioners]
+  );
+
+  const activeProcedures = useMemo(
+    () => procedures.filter((proc) => proc.status !== 'Inactive'),
+    [procedures]
+  );
+
+  // Dynamically derive active Therapy Categories in clinical order
+  const availableCategories = useMemo(() => {
+    const preferredOrder: ServiceCategory[] = [
+      'Registered Massage Therapy',
+      'Brazilian Lymphatic Drainage',
+      'Acupuncture',
+      'Psychotherapy',
+      'Nurse-Led Injectables',
+    ];
+    const present = new Set<ServiceCategory>(activeProcedures.map((p) => p.category));
+    const ordered = preferredOrder.filter((cat) => present.has(cat));
+    for (const cat of present) {
+      if (!ordered.includes(cat)) ordered.push(cat);
+    }
+    return ordered;
+  }, [activeProcedures]);
+
+  // Helper: find active practitioners qualified for a specific procedure
+  const getEligiblePractitioners = (proc?: ClinicProcedure): Practitioner[] => {
+    if (!proc) return activePractitioners;
+    const assignedSet = new Set(
+      (proc.assignedPractitioners || []).map((n) => n.trim().toLowerCase()).filter(Boolean)
+    );
+    const procNameLower = proc.name.trim().toLowerCase();
+    const matched = activePractitioners.filter(
+      (p) =>
+        assignedSet.has(p.name.trim().toLowerCase()) ||
+        (p.servicesOffered || []).some((s) => s.trim().toLowerCase() === procNameLower)
+    );
+    return matched.length > 0 ? matched : activePractitioners;
+  };
+
+  // Pick a sensible initial procedure from active catalog
+  const defaultProcedure = useMemo(() => {
+    return (
+      activeProcedures.find((p) => p.name === 'Therapeutic Massage Therapy (60min)') ||
+      activeProcedures[0]
+    );
+  }, [activeProcedures]);
+
   // Quick Booking Form State
   const [customerName, setCustomerName] = useState('');
   const [partnerId, setPartnerId] = useState(
     () => partners.find((p) => p.id === 'no-partner')?.id || partners[0]?.id || 'no-partner'
   );
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<ServiceCategory | 'all'>('all');
   const [serviceCategory, setServiceCategory] = useState<ServiceCategory>(
-    'Brazilian Lymphatic Drainage'
+    () => defaultProcedure?.category || 'Registered Massage Therapy'
   );
-  const [serviceTitle, setServiceTitle] = useState('Brazilian Lymphatic Drainage (60 Min)');
-  const [therapist, setTherapist] = useState('Camila Dos Santos, RMT');
+  const [serviceTitle, setServiceTitle] = useState(
+    () => defaultProcedure?.name || 'Therapeutic Massage Therapy (60min)'
+  );
+  const [therapist, setTherapist] = useState(() => {
+    const eligible = getEligiblePractitioners(defaultProcedure);
+    return eligible[0]?.name || activePractitioners[0]?.name || '';
+  });
   const [bookingDate, setBookingDate] = useState(todayStr);
-  const [durationMinutes, setDurationMinutes] = useState(60);
-  const [priceCAD, setPriceCAD] = useState(160);
-  const [insuranceBilledCAD, setInsuranceBilledCAD] = useState(120);
+  const [durationMinutes, setDurationMinutes] = useState(() => defaultProcedure?.durationMinutes ?? 60);
+  const [priceCAD, setPriceCAD] = useState(() => defaultProcedure?.priceCAD ?? 120);
+  const [insuranceBilledCAD, setInsuranceBilledCAD] = useState(
+    () => defaultProcedure?.typicalInsuranceBillingCAD ?? 120
+  );
   const [status, setStatus] = useState<'Completed' | 'Upcoming'>('Completed');
   const [autoRegisterCustomer, setAutoRegisterCustomer] = useState(false);
   const [patientPhone, setPatientPhone] = useState('');
   const [patientEmail, setPatientEmail] = useState('');
   const [insuranceProvider, setInsuranceProvider] = useState('None / Self-Pay');
+  const [isAddingNewInsurance, setIsAddingNewInsurance] = useState(false);
+  const [newInsuranceInput, setNewInsuranceInput] = useState('');
+
+  // Persistent list of custom insurance providers added by the front desk
+  const [customInsurers, setCustomInsurers] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('wellthera_custom_insurers_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('wellthera_custom_insurers_v1', JSON.stringify(customInsurers));
+    } catch {
+      // ignore storage errors
+    }
+  }, [customInsurers]);
+
+  // Unified insurance provider options: standard Canadian insurers + saved custom insurers + historical customer insurers
+  const insuranceOptions = useMemo(() => {
+    const defaults: { value: string; label: string }[] = [
+      { value: 'Sun Life', label: 'Sun Life (eClaims)' },
+      { value: 'Manulife', label: 'Manulife (eClaims)' },
+      { value: 'Canada Life', label: 'Canada Life' },
+      { value: 'Green Shield Canada', label: 'Green Shield Canada' },
+      { value: 'Blue Cross', label: 'Blue Cross' },
+    ];
+    const seen = new Set(defaults.map((d) => d.value.toLowerCase()));
+    seen.add('none / self-pay');
+    seen.add('not recorded');
+    seen.add('direct insurance billing');
+
+    const extras: { value: string; label: string }[] = [];
+    const addUnique = (raw?: string) => {
+      const clean = (raw || '').trim();
+      if (!clean) return;
+      const lower = clean.toLowerCase();
+      if (seen.has(lower)) return;
+      seen.add(lower);
+      extras.push({ value: clean, label: clean });
+    };
+
+    for (const c of customInsurers) addUnique(c);
+    for (const cust of customers) addUnique(cust.insuranceProvider);
+
+    return [
+      ...defaults,
+      ...extras,
+      { value: 'None / Self-Pay', label: 'None / Self-Pay (Self-Pay)' },
+    ];
+  }, [customInsurers, customers]);
+
+  const handleSaveNewInsurance = (rawName?: string): string | null => {
+    const clean = (rawName ?? newInsuranceInput).trim();
+    if (!clean) return null;
+    const existing = insuranceOptions.find(
+      (opt) => opt.value.toLowerCase() === clean.toLowerCase()
+    );
+    const finalName = existing ? existing.value : clean;
+    if (!existing) {
+      setCustomInsurers((prev) =>
+        prev.some((x) => x.toLowerCase() === finalName.toLowerCase()) ? prev : [...prev, finalName]
+      );
+    }
+    setInsuranceProvider(finalName);
+    setNewInsuranceInput('');
+    setIsAddingNewInsurance(false);
+    return finalName;
+  };
 
   // Keep selected partnerId valid whenever partners / historical origins update
   useEffect(() => {
@@ -127,71 +264,109 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
     }
   }, [originPartnerOptions, partnerId]);
 
+  // Procedures shown in the Front Desk dropdown (all active procedures or filtered by category)
+  const formProcedures = useMemo(() => {
+    if (selectedCategoryFilter === 'all') return activeProcedures;
+    return activeProcedures.filter((p) => p.category === selectedCategoryFilter);
+  }, [activeProcedures, selectedCategoryFilter]);
+
+  // Currently selected ClinicProcedure object
+  const selectedProcedure = useMemo(() => {
+    return (
+      activeProcedures.find((p) => p.name.trim().toLowerCase() === serviceTitle.trim().toLowerCase()) ||
+      formProcedures[0] ||
+      activeProcedures[0]
+    );
+  }, [activeProcedures, formProcedures, serviceTitle]);
+
+  // Eligible active practitioners for the selected procedure
+  const eligiblePractitioners = useMemo(
+    () => getEligiblePractitioners(selectedProcedure),
+    [selectedProcedure, activePractitioners]
+  );
+
+  // Sync procedure fields automatically if Samuel updates/deletes a procedure in Tab 6
+  useEffect(() => {
+    if (activeProcedures.length === 0) return;
+    const exists = activeProcedures.some(
+      (p) => p.name.trim().toLowerCase() === serviceTitle.trim().toLowerCase()
+    );
+    if (!exists) {
+      const nextProc = formProcedures[0] || activeProcedures[0];
+      if (nextProc) {
+        setServiceTitle(nextProc.name);
+        setServiceCategory(nextProc.category);
+        setPriceCAD(nextProc.priceCAD);
+        setInsuranceBilledCAD(nextProc.typicalInsuranceBillingCAD);
+        setDurationMinutes(nextProc.durationMinutes);
+      }
+    }
+  }, [activeProcedures, formProcedures, serviceTitle]);
+
+  // Sync therapist automatically whenever procedure or active practitioners list changes
+  useEffect(() => {
+    if (eligiblePractitioners.length === 0) {
+      if (therapist !== '') setTherapist('');
+      return;
+    }
+    const stillEligible = eligiblePractitioners.some(
+      (p) => p.name.trim().toLowerCase() === therapist.trim().toLowerCase()
+    );
+    if (!stillEligible) {
+      setTherapist(eligiblePractitioners[0].name);
+    }
+  }, [eligiblePractitioners, therapist]);
+
   // Search & Filter in Table
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClinicianFilter, setSelectedClinicianFilter] = useState('all');
+  const [visibleRows, setVisibleRows] = useState(150);
   const [formSuccessMessage, setFormSuccessMessage] = useState<string | null>(null);
 
   // Derived Copay
   const calculatedPatientPaid = Math.max(0, priceCAD - insuranceBilledCAD);
 
-  // Clinician options derived from practitioners list
-  const cliniciansList = useMemo(() => {
-    const list = practitioners && practitioners.length > 0 ? practitioners : initialPractitioners;
-    return list.map((p) => {
-      const suffix = p.title.includes('Massage')
-        ? 'RMT'
-        : p.title.includes('Acupuncturist')
-        ? 'R.Ac'
-        : p.title.includes('Psychotherapist')
-        ? 'RP'
-        : 'RN (Injector)';
-      return `${p.name}, ${suffix}`;
-    });
-  }, [practitioners]);
+  // Historical clinician filter list: active roster first + any historical ClinicSense names in bookings
+  const tableClinicianOptions = useMemo(() => {
+    const activeNames = activePractitioners.map((p) => p.name);
+    const activeLower = new Set(activeNames.map((n) => n.toLowerCase()));
+    const historicalOnly: string[] = [];
+    const seenHist = new Set<string>();
+    for (const b of bookings) {
+      const t = (b.therapist || '').trim();
+      if (!t) continue;
+      const lower = t.toLowerCase();
+      if (!activeLower.has(lower) && !seenHist.has(lower)) {
+        seenHist.add(lower);
+        historicalOnly.push(t);
+      }
+    }
+    historicalOnly.sort((a, b) => a.localeCompare(b));
+    return { activeNames, historicalOnly };
+  }, [activePractitioners, bookings]);
 
-  // Service titles by category
-  const serviceOptionsByCategory: Record<ServiceCategory, string[]> = {
-    'Brazilian Lymphatic Drainage': [
-      'Full Body Lymphatic Drainage',
-      'Post-Op Contouring Drainage',
-      'Detox & Metabolic Drainage',
-    ],
-    'Registered Massage Therapy': [
-      'Deep Tissue Recovery Massage',
-      'Sports Massage & Cupping',
-      'Relaxation & Myofascial Release',
-    ],
-    Acupuncture: [
-      'Hormonal & Pelvic Acupuncture',
-      'Pain Relief & Trigger Point Acupuncture',
-      'Stress & Insomnia Acupuncture',
-    ],
-    'Nurse-Led Injectables': [
-      'Microneedling PRP',
-      'B-Complex & Glutathione IV Drip',
-      'Facial Rejuvenation Assessment',
-    ],
-    Psychotherapy: [
-      'Cognitive Behavioural Therapy (CBT)',
-      'Stress & Burnout Counselling',
-      'Holistic Wellness Coaching',
-    ],
+  const applyProcedureSelection = (proc: ClinicProcedure) => {
+    setServiceTitle(proc.name);
+    setServiceCategory(proc.category);
+    setPriceCAD(proc.priceCAD);
+    setInsuranceBilledCAD(proc.typicalInsuranceBillingCAD);
+    setDurationMinutes(proc.durationMinutes);
+    const eligible = getEligiblePractitioners(proc);
+    if (
+      eligible.length > 0 &&
+      !eligible.some((p) => p.name.trim().toLowerCase() === therapist.trim().toLowerCase())
+    ) {
+      setTherapist(eligible[0].name);
+    }
   };
 
-  const handleCategoryChange = (cat: ServiceCategory) => {
+  const handleCategoryChange = (cat: ServiceCategory | 'all') => {
+    setSelectedCategoryFilter(cat);
+    if (cat === 'all') return;
     setServiceCategory(cat);
-    const matchingProc = procedures.find((p) => p.category === cat && p.status === 'Active');
+    const matchingProc = activeProcedures.find((p) => p.category === cat);
     if (matchingProc) {
-      setServiceTitle(matchingProc.name);
-      setPriceCAD(matchingProc.priceCAD);
-      setInsuranceBilledCAD(matchingProc.typicalInsuranceBillingCAD);
-      setDurationMinutes(matchingProc.durationMinutes);
-    } else {
-      const options = serviceOptionsByCategory[cat] || [];
-      if (options[0]) {
-        setServiceTitle(options[0]);
-      }
+      applyProcedureSelection(matchingProc);
     }
   };
 
@@ -212,16 +387,14 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
     }
   };
 
-  const handleProcedureTitleChange = (val: string) => {
-    setServiceTitle(val);
-    const matchedProc = procedures.find(
-      (p) => p.name.trim().toLowerCase() === val.trim().toLowerCase()
+  const handleProcedureSelectChange = (procName: string) => {
+    const matchedProc = activeProcedures.find(
+      (p) => p.name.trim().toLowerCase() === procName.trim().toLowerCase()
     );
     if (matchedProc) {
-      setServiceCategory(matchedProc.category);
-      setPriceCAD(matchedProc.priceCAD);
-      setInsuranceBilledCAD(matchedProc.typicalInsuranceBillingCAD);
-      setDurationMinutes(matchedProc.durationMinutes);
+      applyProcedureSelection(matchedProc);
+    } else {
+      setServiceTitle(procName);
     }
   };
 
@@ -256,6 +429,13 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
 
     onAddNewBooking(newBooking);
 
+    // Auto-save any newly typed insurance provider if user submitted directly
+    let resolvedInsuranceProvider = insuranceProvider || 'None / Self-Pay';
+    if (isAddingNewInsurance && newInsuranceInput.trim()) {
+      const saved = handleSaveNewInsurance(newInsuranceInput);
+      if (saved) resolvedInsuranceProvider = saved;
+    }
+
     // Auto-register new customer if requested
     if (autoRegisterCustomer && !existingCustomer) {
       onAddNewCustomer({
@@ -275,7 +455,7 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
         totalVisits: 1,
         totalSpendCAD: Number(priceCAD) || 0,
         preferredService: serviceCategory,
-        insuranceProvider: insuranceProvider || 'None / Self-Pay',
+        insuranceProvider: resolvedInsuranceProvider,
         status: 'Active',
         recencyDays: 0,
         recencyScore: 5,
@@ -291,19 +471,35 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
     // Reset customer name
     setCustomerName('');
     setPatientEmail('');
+    setPatientPhone('');
+    setIsAddingNewInsurance(false);
+    setNewInsuranceInput('');
+  };
+
+  // Helper: match active short names against historical ClinicSense legal names in table filter
+  const matchesSelectedClinician = (bookingTherapist: string, selectedFilter: string) => {
+    if (selectedFilter === 'all') return true;
+    const bt = (bookingTherapist || '').trim().toLowerCase();
+    const sf = selectedFilter.trim().toLowerCase();
+    if (bt === sf || bt.startsWith(sf)) return true;
+    if (sf === 'yuki hamada' && bt.includes('yukiko hamada')) return true;
+    if (sf === 'liz cerato' && bt.includes('elizabeth cerato')) return true;
+    if (sf === 'djuna cunha' && bt.includes('djuna') && bt.includes('cunha')) return true;
+    return false;
   };
 
   // Filtered bookings
   const filteredBookings = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     return bookings.filter((b) => {
       const matchesSearch =
-        b.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.serviceTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.partnerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.therapist.toLowerCase().includes(searchQuery.toLowerCase());
+        !q ||
+        b.customerName.toLowerCase().includes(q) ||
+        b.serviceTitle.toLowerCase().includes(q) ||
+        b.partnerName.toLowerCase().includes(q) ||
+        b.therapist.toLowerCase().includes(q);
 
-      const matchesClinician =
-        selectedClinicianFilter === 'all' || b.therapist === selectedClinicianFilter;
+      const matchesClinician = matchesSelectedClinician(b.therapist, selectedClinicianFilter);
 
       return matchesSearch && matchesClinician;
     });
@@ -505,54 +701,68 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
               </select>
             </div>
 
-            {/* Service Category */}
+            {/* Service Category Filter */}
             <div className="space-y-1">
               <label className="font-semibold block">Therapy Category *</label>
               <select
-                value={serviceCategory}
-                onChange={(e) => handleCategoryChange(e.target.value as ServiceCategory)}
+                value={selectedCategoryFilter}
+                onChange={(e) => handleCategoryChange(e.target.value as ServiceCategory | 'all')}
                 className={`w-full px-3 py-2 rounded-xl border text-xs transition-colors focus:outline-hidden focus:ring-1 focus:ring-[#686e4a] ${
                   isDarkMode
                     ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
                     : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
                 }`}
               >
-                <option value="Brazilian Lymphatic Drainage">Brazilian Lymphatic Drainage</option>
-                <option value="Registered Massage Therapy">Registered Massage Therapy</option>
-                <option value="Acupuncture">Acupuncture</option>
-                <option value="Nurse-Led Injectables">Nurse-Led Injectables</option>
-                <option value="Psychotherapy">Psychotherapy</option>
+                <option value="all">All Categories ({activeProcedures.length} Services)</option>
+                {availableCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
               </select>
             </div>
 
-            {/* Specific Procedure */}
+            {/* Specific Procedure (Live Dropdown from Tab 6 Procedures) */}
             <div className="space-y-1">
-              <label className="font-semibold block">Procedure Performed</label>
-              <input
-                type="text"
-                list="wellthera-procedures-datalist"
-                value={serviceTitle}
-                onChange={(e) => handleProcedureTitleChange(e.target.value)}
+              <label className="font-semibold block">Procedure Performed *</label>
+              <select
+                value={selectedProcedure?.name || serviceTitle}
+                onChange={(e) => handleProcedureSelectChange(e.target.value)}
                 className={`w-full px-3 py-2 rounded-xl border text-xs transition-colors focus:outline-hidden focus:ring-1 focus:ring-[#686e4a] ${
                   isDarkMode
                     ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
                     : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
                 }`}
-              />
-              <datalist id="wellthera-procedures-datalist">
-                {procedures
-                  .filter((proc) => proc.status !== 'Inactive')
-                  .map((proc) => (
-                    <option key={proc.id} value={proc.name} />
-                  ))}
-              </datalist>
+              >
+                {selectedCategoryFilter === 'all'
+                  ? availableCategories.map((cat) => {
+                      const catProcs = activeProcedures.filter((p) => p.category === cat);
+                      if (catProcs.length === 0) return null;
+                      return (
+                        <optgroup key={cat} label={cat}>
+                          {catProcs.map((proc) => (
+                            <option key={proc.id} value={proc.name}>
+                              {proc.name} — ${proc.priceCAD.toFixed(0)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })
+                  : formProcedures.map((proc) => (
+                      <option key={proc.id} value={proc.name}>
+                        {proc.name} — ${proc.priceCAD.toFixed(0)}
+                      </option>
+                    ))}
+              </select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-            {/* Therapist */}
+            {/* Therapist (Live Active Practitioners Qualified for Selected Procedure) */}
             <div className="space-y-1 sm:col-span-2">
-              <label className="font-semibold block">Therapist / Clinician</label>
+              <label className="font-semibold block">
+                Therapist / Clinician ({eligiblePractitioners.length} qualified)
+              </label>
               <select
                 value={therapist}
                 onChange={(e) => setTherapist(e.target.value)}
@@ -562,9 +772,9 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
                     : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
                 }`}
               >
-                {cliniciansList.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                {eligiblePractitioners.map((p) => (
+                  <option key={p.id} value={p.name}>
+                    {p.name} — {p.title}
                   </option>
                 ))}
               </select>
@@ -658,7 +868,7 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                 <input
                   type="text"
-                  placeholder="Phone: (705) 555-0100"
+                  placeholder="Patient phone (optional)"
                   value={patientPhone}
                   onChange={(e) => setPatientPhone(e.target.value)}
                   className={`px-3 py-2 rounded-xl border text-xs ${
@@ -678,22 +888,92 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
                       : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
                   }`}
                 />
-                <select
-                  value={insuranceProvider}
-                  onChange={(e) => setInsuranceProvider(e.target.value)}
-                  className={`px-3 py-2 rounded-xl border text-xs ${
-                    isDarkMode
-                      ? 'bg-[#181b12] border-[#292e1e] text-[#f9f8f5]'
-                      : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
-                  }`}
-                >
-                  <option value="Sun Life">Sun Life (eClaims)</option>
-                  <option value="Manulife">Manulife (eClaims)</option>
-                  <option value="Canada Life">Canada Life</option>
-                  <option value="Green Shield Canada">Green Shield Canada</option>
-                  <option value="Blue Cross">Blue Cross</option>
-                  <option value="None / Self-Pay">None / Self-Pay (Self-Pay)</option>
-                </select>
+                <div className="space-y-2">
+                  <select
+                    value={isAddingNewInsurance ? '__ADD_NEW_INSURANCE__' : insuranceProvider}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW_INSURANCE__') {
+                        setIsAddingNewInsurance(true);
+                        setNewInsuranceInput('');
+                      } else {
+                        setIsAddingNewInsurance(false);
+                        setNewInsuranceInput('');
+                        setInsuranceProvider(e.target.value);
+                      }
+                    }}
+                    className={`w-full px-3 py-2 rounded-xl border text-xs ${
+                      isDarkMode
+                        ? 'bg-[#181b12] border-[#292e1e] text-[#f9f8f5]'
+                        : 'bg-[#ffffff] border-[#bcc2a4] text-[#332e1e]'
+                    }`}
+                  >
+                    {insuranceOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW_INSURANCE__">+ Add New Insurance...</option>
+                  </select>
+
+                  {isAddingNewInsurance && (
+                    <div
+                      className={`p-2 rounded-xl border space-y-1.5 ${
+                        isDarkMode
+                          ? 'bg-[#181b12] border-[#686e4a]/60'
+                          : 'bg-[#ffffff] border-[#686e4a]/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="New insurance name (e.g. Desjardins)..."
+                          value={newInsuranceInput}
+                          onChange={(e) => setNewInsuranceInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveNewInsurance();
+                            } else if (e.key === 'Escape') {
+                              setIsAddingNewInsurance(false);
+                              setNewInsuranceInput('');
+                            }
+                          }}
+                          className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border text-xs focus:outline-hidden focus:ring-1 focus:ring-[#686e4a] ${
+                            isDarkMode
+                              ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
+                              : 'bg-[#f9f8f5] border-[#bcc2a4] text-[#332e1e]'
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveNewInsurance()}
+                          disabled={!newInsuranceInput.trim()}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#686e4a] hover:bg-[#52573a] disabled:opacity-40 text-white font-semibold text-xs cursor-pointer transition-colors shrink-0"
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewInsurance(false);
+                            setNewInsuranceInput('');
+                          }}
+                          className={`px-2 py-1.5 rounded-lg border text-xs cursor-pointer shrink-0 ${
+                            isDarkMode
+                              ? 'border-[#292e1e] text-[#a2a992] hover:bg-[#1f2417]'
+                              : 'border-[#e7e3da] text-[#554e38] hover:bg-[#f0ede6]'
+                          }`}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <p className="text-[10px] opacity-70">
+                        Quick-adds the insurer to the list now — full insurance details can be completed later.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -740,7 +1020,10 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
 
             <select
               value={selectedClinicianFilter}
-              onChange={(e) => setSelectedClinicianFilter(e.target.value)}
+              onChange={(e) => {
+                setSelectedClinicianFilter(e.target.value);
+                setVisibleRows(150);
+              }}
               className={`px-3 py-1.5 rounded-full border text-xs ${
                 isDarkMode
                   ? 'bg-[#181b12] border-[#292e1e] text-[#f9f8f5]'
@@ -748,17 +1031,29 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
               }`}
             >
               <option value="all">All Therapists</option>
-              {cliniciansList.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
+              <optgroup label="Active Clinic Team">
+                {tableClinicianOptions.activeNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </optgroup>
+              {tableClinicianOptions.historicalOnly.length > 0 && (
+                <optgroup label="Historical ClinicSense Records">
+                  {tableClinicianOptions.historicalOnly.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="text-xs opacity-70">
-              {filteredBookings.length} of {bookings.length} records
+              Showing {Math.min(visibleRows, filteredBookings.length).toLocaleString()} of{' '}
+              {filteredBookings.length.toLocaleString()} records
             </span>
             <button
               onClick={handleExportManagerCsv}
@@ -804,7 +1099,7 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredBookings.map((b) => (
+                filteredBookings.slice(0, visibleRows).map((b) => (
                   <tr
                     key={b.id}
                     className={`transition-colors ${
@@ -850,6 +1145,25 @@ export const ManagerDailyLogView: React.FC<ManagerDailyLogViewProps> = ({
             </tbody>
           </table>
         </div>
+        {filteredBookings.length > visibleRows && (
+          <div
+            className={`p-3 border-t flex items-center justify-center ${
+              isDarkMode ? 'bg-[#14160e] border-[#292e1e]' : 'bg-[#f9f8f5] border-[#e7e3da]'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setVisibleRows((prev) => prev + 200)}
+              className={`px-4 py-1.5 rounded-full border text-xs font-semibold cursor-pointer transition-colors ${
+                isDarkMode
+                  ? 'bg-[#1c2015] border-[#292e1e] text-[#c7ccaa] hover:bg-[#252a1c]'
+                  : 'bg-[#ffffff] border-[#bcc2a4] text-[#52573a] hover:bg-[#f0ede6]'
+              }`}
+            >
+              Load more records ({(filteredBookings.length - visibleRows).toLocaleString()} remaining)
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

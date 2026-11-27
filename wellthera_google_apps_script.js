@@ -1,8 +1,8 @@
 /**
  * =========================================================================
  * WELLTHERA INTEGRATED HEALTH — GOOGLE SHEETS SETUP & AUTOMATION
- * Version: 5.1 — FULL 3-REPORT CLINICSENSE RECONCILIATION (1,182 PATIENTS, 3,929 APPOINTMENTS),
- * OKRS & QUARTERLY GOALS, PRACTITIONERS, PROCEDURES & FULL 2-WAY SYNC
+ * Version: 5.2 — FULL 3-REPORT CLINICSENSE RECONCILIATION (1,182 PATIENTS, 3,929 APPOINTMENTS),
+ * VERIFIED TEAM (8 ACTIVE PRACTITIONERS) & CLINICAL CATALOG (30 PROCEDURES)
  *
  * Target Google Drive Folder:
  * https://drive.google.com/drive/folders/1dPwBTrwTASN7gcuPFAoaPaY0y4SHvxMF?usp=drive_link
@@ -24,8 +24,8 @@
  * - 📅 Services & Bookings Log (All 3,929 Real Appointments with Direct Insurance & Out-of-Pocket Splits)
  * - 🤝 Partners & ROI (Referral Partners, Clinics, Gyms, and Commissions)
  * - 💰 CAC & Channel Costs (Acquisition Costs and Marketing Metrics)
- * - 👩‍⚕️ Practitioners & Team (Registered Massage Therapists, Acupuncturist, Psychotherapist, Nurse Injector)
- * - 📋 Procedures & Treatments (Clinical Catalog, Fees, Durations, and Billing Rates)
+ * - 👩‍⚕️ Practitioners & Team (8 Active Practitioners: Registered Massage Therapists, Acupuncturist, Psychotherapist)
+ * - 📋 Procedures & Treatments (30 Clinical Services, Fees, Durations, and Billing Rates)
  * - 🎯 OKRs & Quarterly Goals (Quarterly Revenue Goals, CAC Benchmarks, LTV:CAC Targets & Key Results)
  * - 📖 INSTRUCTIONS & STAFF GUIDE (Clinic Operating Manual & SOP)
  * =========================================================================
@@ -238,122 +238,202 @@ const INITIAL_PRACTITIONERS = [
     "id": "pr-1",
     "name": "Camila Dos Santos",
     "title": "Registered Massage Therapist",
-    "discipline": "Massage Therapy & Lymphatic Drainage",
-    "email": "camila@wellthera.ca",
-    "phone": "(705) 730-1000",
+    "discipline": "Massage Therapy",
+    "email": "",
+    "phone": "",
     "status": "Active",
     "servicesOffered": [
-      "Brazilian Lymphatic Drainage",
-      "Registered Massage Therapy",
-      "Prenatal & Postnatal Specialized Massage"
+      "Therapeutic Massage Therapy (30min)",
+      "Therapeutic Massage Therapy (45min)",
+      "Therapeutic Massage Therapy (60min)",
+      "Therapeutic Massage Therapy (75min)",
+      "Therapeutic Massage Therapy (90min)",
+      "MLD Massage Therapy - Body (60min)",
+      "MLD Massage Therapy - Half Body (30min)",
+      "MLD Massage Therapy - Face & Neck (30min)",
+      "Prenatal Massage Therapy (45min)",
+      "Prenatal Massage Therapy (60min)",
+      "Pediatric Massage Therapy (30min)",
+      "Pediatric Massage Therapy (45min)",
+      "Pediatric Massage Therapy (60min)",
+      "Indie Head Massage Therapy (30min)",
+      "Indie Head Massage Therapy (45min)",
+      "Indie Head Massage Therapy (60min)",
+      "MLD Massage Therapy - Body and Face (90min)",
+      "Therapeutic Massage Therapy - Cupping (45min)",
+      "Therapeutic Massage Therapy - Cupping (60min)",
+      "Therapeutic Massage Therapy - Cupping (75min)"
     ]
   },
   {
     "id": "pr-2",
-    "name": "Kiana Forder",
-    "title": "Registered Acupuncturist",
-    "discipline": "Acupuncture & Traditional Chinese Medicine",
-    "email": "kiana@wellthera.ca",
-    "phone": "(705) 730-1000",
+    "name": "Rachel Wallace",
+    "title": "Registered Massage Therapist",
+    "discipline": "Massage Therapy",
+    "email": "",
+    "phone": "",
     "status": "Active",
     "servicesOffered": [
-      "Acupuncture & Traditional Chinese Medicine",
-      "Cosmetic Facial Acupuncture & Gua Sha"
+      "Therapeutic Massage Therapy (30min)",
+      "Therapeutic Massage Therapy (45min)",
+      "Therapeutic Massage Therapy (60min)",
+      "Therapeutic Massage Therapy (75min)",
+      "Therapeutic Massage Therapy (90min)",
+      "MLD Massage Therapy - Body (60min)",
+      "MLD Massage Therapy - Half Body (30min)",
+      "MLD Massage Therapy - Face & Neck (30min)",
+      "Prenatal Massage Therapy (45min)",
+      "Prenatal Massage Therapy (60min)",
+      "Pediatric Massage Therapy (30min)",
+      "Pediatric Massage Therapy (45min)",
+      "Pediatric Massage Therapy (60min)",
+      "Indie Head Massage Therapy (30min)",
+      "Indie Head Massage Therapy (45min)",
+      "Indie Head Massage Therapy (60min)",
+      "MLD Massage Therapy - Body and Face (90min)",
+      "Therapeutic Massage Therapy - Cupping (45min)",
+      "Therapeutic Massage Therapy - Cupping (60min)",
+      "Therapeutic Massage Therapy - Cupping (75min)"
     ]
   },
   {
     "id": "pr-3",
-    "name": "Yukiko Hamada",
+    "name": "Yuki Hamada",
     "title": "Registered Massage Therapist",
-    "discipline": "Massage Therapy & Deep Tissue Rehabilitation",
-    "email": "yuki@wellthera.ca",
-    "phone": "(705) 730-1000",
+    "discipline": "Massage Therapy",
+    "email": "",
+    "phone": "",
     "status": "Active",
     "servicesOffered": [
-      "Registered Massage Therapy (60 Min)",
-      "Registered Massage Therapy (90 Min)",
-      "Deep Tissue & Myofascial Release"
+      "Therapeutic Massage Therapy (30min)",
+      "Therapeutic Massage Therapy (45min)",
+      "Therapeutic Massage Therapy (60min)",
+      "Therapeutic Massage Therapy (75min)",
+      "Therapeutic Massage Therapy (90min)",
+      "MLD Massage Therapy - Body (60min)",
+      "MLD Massage Therapy - Half Body (30min)",
+      "MLD Massage Therapy - Face & Neck (30min)",
+      "Prenatal Massage Therapy (45min)",
+      "Prenatal Massage Therapy (60min)",
+      "Pediatric Massage Therapy (30min)",
+      "Pediatric Massage Therapy (45min)",
+      "Pediatric Massage Therapy (60min)",
+      "TMJ Massage Therapy - Initial (60min)",
+      "TMJ Massage Therapy - Follow-up (45min)",
+      "TMJ Massage Therapy - Follow-up (60min)",
+      "MLD Massage Therapy - Body and Face (90min)",
+      "Therapeutic Massage Therapy - Cupping (45min)",
+      "Therapeutic Massage Therapy - Cupping (60min)",
+      "Therapeutic Massage Therapy - Cupping (75min)"
     ]
   },
   {
     "id": "pr-4",
-    "name": "Rachel Wallace",
+    "name": "Liz Cerato",
     "title": "Registered Massage Therapist",
-    "discipline": "Massage Therapy & Sports Injury Recovery",
-    "email": "rachel@wellthera.ca",
-    "phone": "(705) 730-1000",
+    "discipline": "Massage Therapy",
+    "email": "",
+    "phone": "",
     "status": "Active",
     "servicesOffered": [
-      "Registered Massage Therapy (60 Min)",
-      "Registered Massage Therapy (90 Min)",
-      "Prenatal & Postnatal Specialized Massage"
+      "Therapeutic Massage Therapy (30min)",
+      "Therapeutic Massage Therapy (45min)",
+      "Therapeutic Massage Therapy (60min)",
+      "Therapeutic Massage Therapy (75min)",
+      "Therapeutic Massage Therapy (90min)",
+      "MLD Massage Therapy - Body (60min)",
+      "MLD Massage Therapy - Half Body (30min)",
+      "MLD Massage Therapy - Face & Neck (30min)",
+      "Prenatal Massage Therapy (45min)",
+      "Prenatal Massage Therapy (60min)",
+      "Pediatric Massage Therapy (30min)",
+      "Pediatric Massage Therapy (45min)",
+      "Pediatric Massage Therapy (60min)",
+      "MLD Massage Therapy - Body and Face (90min)",
+      "Therapeutic Massage Therapy - Cupping (45min)",
+      "Therapeutic Massage Therapy - Cupping (60min)",
+      "Therapeutic Massage Therapy - Cupping (75min)"
     ]
   },
   {
     "id": "pr-5",
-    "name": "Elizabeth Cerato Reveilleau",
+    "name": "Thaisa Sakima",
     "title": "Registered Massage Therapist",
-    "discipline": "Massage Therapy & Post-Op Lymphatic Care",
-    "email": "liz@wellthera.ca",
-    "phone": "(705) 730-1000",
+    "discipline": "Massage Therapy",
+    "email": "",
+    "phone": "",
     "status": "Active",
     "servicesOffered": [
-      "Brazilian Lymphatic Drainage",
-      "Registered Massage Therapy (60 Min)",
-      "Registered Massage Therapy (90 Min)"
+      "Therapeutic Massage Therapy (30min)",
+      "Therapeutic Massage Therapy (45min)",
+      "Therapeutic Massage Therapy (60min)",
+      "Therapeutic Massage Therapy (75min)",
+      "Therapeutic Massage Therapy (90min)",
+      "Prenatal Massage Therapy (45min)",
+      "Prenatal Massage Therapy (60min)",
+      "Pediatric Massage Therapy (30min)",
+      "Pediatric Massage Therapy (45min)",
+      "Pediatric Massage Therapy (60min)"
     ]
   },
   {
     "id": "pr-6",
-    "name": "Thaisa Sakima",
-    "title": "Registered Massage Therapist",
-    "discipline": "Massage Therapy & Brazilian Body Contouring",
-    "email": "thaisa@wellthera.ca",
-    "phone": "(705) 730-1000",
+    "name": "Giovanna Faedo",
+    "title": "Registered Psychotherapist",
+    "discipline": "Psychotherapy",
+    "email": "",
+    "phone": "",
     "status": "Active",
     "servicesOffered": [
-      "Brazilian Lymphatic Drainage",
-      "Registered Massage Therapy (60 Min)",
-      "Registered Massage Therapy (90 Min)"
+      "Psychotherapy: Complimentary Fit Consultation (30min)",
+      "Psychotherapy: Individual Session (50min)"
     ]
   },
   {
     "id": "pr-7",
-    "name": "Giovanna Faedo",
-    "title": "Registered Psychotherapist",
-    "discipline": "Psychotherapy & Somatic Mental Health",
-    "email": "giovanna@wellthera.ca",
-    "phone": "(705) 730-1000",
+    "name": "Kiana Forder",
+    "title": "Registered Acupuncturist",
+    "discipline": "Acupuncture",
+    "email": "",
+    "phone": "",
     "status": "Active",
     "servicesOffered": [
-      "Psychotherapy & Somatic Mental Health (50 Min)",
-      "Stress & Nervous System Regulation"
+      "Initial Acupuncture Assessment & Treatment (75min)",
+      "Acupuncture - Follow-up (45min)",
+      "Acupuncture - Follow-up (60min)",
+      "Acupuncture: Cranial & Facial - Initial (75min)",
+      "Acupuncture: Cranial & Facial - Follow-up (60min)"
     ]
   },
   {
     "id": "pr-8",
-    "name": "Elise K. Papa",
-    "title": "Registered Nurse · Aesthetic Injector",
-    "discipline": "Aesthetic Nursing & Medical Injectables",
-    "email": "elise@wellthera.ca",
-    "phone": "(705) 730-1000",
-    "status": "Active",
-    "servicesOffered": [
-      "Nurse-Led Aesthetic Consultation & Neurotoxins",
-      "Advanced Dermal Filler & Skin Booster Therapy"
-    ]
-  },
-  {
-    "id": "pr-9",
-    "name": "Djuna Andrade Cunha",
+    "name": "Djuna Cunha",
     "title": "Registered Massage Therapist",
-    "discipline": "Therapeutic Massage & Lymphatic Care",
-    "email": "djuna@wellthera.ca",
-    "phone": "(705) 730-1000",
+    "discipline": "Massage Therapy",
+    "email": "",
+    "phone": "",
     "status": "Active",
     "servicesOffered": [
-      "Registered Massage Therapy (60 Min)",
-      "Brazilian Lymphatic Drainage"
+      "Therapeutic Massage Therapy (30min)",
+      "Therapeutic Massage Therapy (45min)",
+      "Therapeutic Massage Therapy (60min)",
+      "Therapeutic Massage Therapy (75min)",
+      "Therapeutic Massage Therapy (90min)",
+      "MLD Massage Therapy - Body (60min)",
+      "MLD Massage Therapy - Half Body (30min)",
+      "MLD Massage Therapy - Face & Neck (30min)",
+      "Prenatal Massage Therapy (45min)",
+      "Prenatal Massage Therapy (60min)",
+      "Pediatric Massage Therapy (30min)",
+      "Pediatric Massage Therapy (45min)",
+      "Pediatric Massage Therapy (60min)",
+      "TMJ Massage Therapy - Initial (60min)",
+      "TMJ Massage Therapy - Follow-up (45min)",
+      "TMJ Massage Therapy - Follow-up (60min)",
+      "MLD Massage Therapy - Body and Face (90min)",
+      "Therapeutic Massage Therapy - Cupping (45min)",
+      "Therapeutic Massage Therapy - Cupping (60min)",
+      "Therapeutic Massage Therapy - Cupping (75min)"
     ]
   }
 ];
@@ -361,166 +441,536 @@ const INITIAL_PRACTITIONERS = [
 const INITIAL_PROCEDURES = [
   {
     "id": "proc-1",
-    "name": "Brazilian Lymphatic Drainage (60 Min)",
-    "category": "Brazilian Lymphatic Drainage",
-    "durationMinutes": 60,
-    "priceCAD": 160,
+    "name": "Therapeutic Massage Therapy (30min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 30,
+    "priceCAD": 80,
     "insuranceCovered": true,
-    "typicalInsuranceBillingCAD": 120,
-    "typicalCopayCAD": 40,
+    "typicalInsuranceBillingCAD": 80,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
       "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
       "Liz Cerato",
-      "Thaisa Sakima"
+      "Thaisa Sakima",
+      "Djuna Cunha"
     ],
-    "description": "Authentic Brazilian manual lymphatic technique reducing fluid retention, boosting circulation, and toning contour.",
+    "description": "A hands-on treatment that uses kneading and soft-tissue mobilization techniques.",
     "status": "Active"
   },
   {
     "id": "proc-2",
-    "name": "Brazilian Lymphatic Drainage (Extended - 90 Min)",
-    "category": "Brazilian Lymphatic Drainage",
-    "durationMinutes": 90,
-    "priceCAD": 220,
+    "name": "Therapeutic Massage Therapy (45min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 45,
+    "priceCAD": 100,
     "insuranceCovered": true,
-    "typicalInsuranceBillingCAD": 150,
-    "typicalCopayCAD": 70,
+    "typicalInsuranceBillingCAD": 100,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
       "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
       "Liz Cerato",
-      "Thaisa Sakima"
+      "Thaisa Sakima",
+      "Djuna Cunha"
     ],
-    "description": "Comprehensive full-body and facial Brazilian lymphatic drainage protocol for deep detox and contouring.",
+    "description": "A hands-on treatment that uses kneading and soft-tissue mobilization techniques.",
     "status": "Active"
   },
   {
     "id": "proc-3",
-    "name": "Registered Massage Therapy (60 Min)",
+    "name": "Therapeutic Massage Therapy (60min)",
     "category": "Registered Massage Therapy",
     "durationMinutes": 60,
-    "priceCAD": 150,
+    "priceCAD": 120,
     "insuranceCovered": true,
     "typicalInsuranceBillingCAD": 120,
-    "typicalCopayCAD": 30,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
       "Camila Dos Santos",
-      "Yuki Hamada",
       "Rachel Wallace",
+      "Yuki Hamada",
       "Liz Cerato",
-      "Thaisa Sakima"
+      "Thaisa Sakima",
+      "Djuna Cunha"
     ],
-    "description": "Therapeutic manipulation of soft tissues, trigger point release, and Swedish techniques for chronic tension.",
+    "description": "A hands-on treatment that uses kneading and soft-tissue mobilization techniques.",
     "status": "Active"
   },
   {
     "id": "proc-4",
-    "name": "Registered Massage Therapy (90 Min)",
+    "name": "Therapeutic Massage Therapy (75min)",
     "category": "Registered Massage Therapy",
-    "durationMinutes": 90,
-    "priceCAD": 210,
+    "durationMinutes": 75,
+    "priceCAD": 140,
     "insuranceCovered": true,
-    "typicalInsuranceBillingCAD": 160,
-    "typicalCopayCAD": 50,
+    "typicalInsuranceBillingCAD": 140,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
       "Camila Dos Santos",
-      "Yuki Hamada",
       "Rachel Wallace",
+      "Yuki Hamada",
       "Liz Cerato",
-      "Thaisa Sakima"
+      "Thaisa Sakima",
+      "Djuna Cunha"
     ],
-    "description": "Extended full-body therapeutic rehabilitation session targeting complex postural strain and neuromuscular fatigue.",
+    "description": "A hands-on treatment that uses kneading and soft-tissue mobilization techniques.",
     "status": "Active"
   },
   {
     "id": "proc-5",
-    "name": "Acupuncture & Traditional Chinese Medicine (60 Min)",
-    "category": "Acupuncture",
-    "durationMinutes": 60,
-    "priceCAD": 140,
+    "name": "Therapeutic Massage Therapy (90min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 90,
+    "priceCAD": 160,
     "insuranceCovered": true,
-    "typicalInsuranceBillingCAD": 110,
-    "typicalCopayCAD": 30,
+    "typicalInsuranceBillingCAD": 160,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
-      "Kiana Forder"
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Thaisa Sakima",
+      "Djuna Cunha"
     ],
-    "description": "Classical TCM meridian stimulation, gentle needle insertion, and electro-acupuncture for pain, sleep, and hormonal balance.",
+    "description": "A hands-on treatment that uses kneading and soft-tissue mobilization techniques.",
     "status": "Active"
   },
   {
     "id": "proc-6",
-    "name": "Cosmetic Facial Acupuncture & Gua Sha (75 Min)",
-    "category": "Acupuncture",
-    "durationMinutes": 75,
-    "priceCAD": 185,
+    "name": "MLD Massage Therapy - Body (60min)",
+    "category": "Brazilian Lymphatic Drainage",
+    "durationMinutes": 60,
+    "priceCAD": 150,
     "insuranceCovered": true,
-    "typicalInsuranceBillingCAD": 130,
-    "typicalCopayCAD": 55,
+    "typicalInsuranceBillingCAD": 150,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
-      "Kiana Forder"
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Djuna Cunha"
     ],
-    "description": "Natural facial rejuvenation combining intradermal micro-needles, lymphatic gua sha, and facial meridian sculpting.",
+    "description": "A rhythmic massage that encourages lymph fluid drainage and reduces fluid retention.",
     "status": "Active"
   },
   {
     "id": "proc-7",
-    "name": "Psychotherapy & Somatic Mental Health (50 Min)",
-    "category": "Psychotherapy",
-    "durationMinutes": 50,
-    "priceCAD": 175,
+    "name": "MLD Massage Therapy - Half Body (30min)",
+    "category": "Brazilian Lymphatic Drainage",
+    "durationMinutes": 30,
+    "priceCAD": 95,
     "insuranceCovered": true,
-    "typicalInsuranceBillingCAD": 150,
-    "typicalCopayCAD": 25,
+    "typicalInsuranceBillingCAD": 95,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
-      "Giovanna Faedo"
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Djuna Cunha"
     ],
-    "description": "Evidence-based psychotherapy integrating cognitive, somatic, and polyvagal approaches for anxiety and life transitions.",
+    "description": "A focused 30-minute massage that uses gentle lymphatic drainage techniques for half body.",
     "status": "Active"
   },
   {
     "id": "proc-8",
-    "name": "Nurse-Led Aesthetic Consultation & Neurotoxins (Botox / Dysport - 45 Min)",
-    "category": "Nurse-Led Injectables",
-    "durationMinutes": 45,
-    "priceCAD": 350,
-    "insuranceCovered": false,
-    "typicalInsuranceBillingCAD": 0,
-    "typicalCopayCAD": 350,
+    "name": "MLD Massage Therapy - Face & Neck (30min)",
+    "category": "Brazilian Lymphatic Drainage",
+    "durationMinutes": 30,
+    "priceCAD": 85,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 85,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
-      "Elise K. Papa"
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Djuna Cunha"
     ],
-    "description": "Clinical nursing assessment and neuromodulator administration for upper-face smoothing, masseter slimming, or hyperhidrosis.",
+    "description": "A gentle massage of the face and neck that uses lymphatic drainage to reduce puffiness.",
     "status": "Active"
   },
   {
     "id": "proc-9",
-    "name": "Advanced Dermal Filler & Skin Booster Therapy (60 Min)",
-    "category": "Nurse-Led Injectables",
-    "durationMinutes": 60,
-    "priceCAD": 550,
-    "insuranceCovered": false,
-    "typicalInsuranceBillingCAD": 0,
-    "typicalCopayCAD": 550,
+    "name": "Prenatal Massage Therapy (45min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 45,
+    "priceCAD": 100,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 100,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
-      "Elise K. Papa"
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Thaisa Sakima",
+      "Djuna Cunha"
     ],
-    "description": "Hyaluronic acid dermal contouring and micro-droplet hydration boosters to restore midface volume and dermal elasticity.",
+    "description": "A therapeutic massage that adapts positioning and support for prenatal comfort.",
     "status": "Active"
   },
   {
     "id": "proc-10",
-    "name": "Prenatal & Postnatal Specialized Massage (60 Min)",
+    "name": "Prenatal Massage Therapy (60min)",
     "category": "Registered Massage Therapy",
     "durationMinutes": 60,
-    "priceCAD": 150,
+    "priceCAD": 120,
     "insuranceCovered": true,
     "typicalInsuranceBillingCAD": 120,
-    "typicalCopayCAD": 30,
+    "typicalCopayCAD": 0,
     "assignedPractitioners": [
       "Camila Dos Santos",
       "Rachel Wallace",
-      "Liz Cerato"
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Thaisa Sakima",
+      "Djuna Cunha"
     ],
-    "description": "Side-lying, supportive maternity massage addressing pelvic girdle soreness, sacroiliac relief, and fluid retention.",
+    "description": "A therapeutic massage that adapts positioning and support for prenatal comfort.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-11",
+    "name": "Pediatric Massage Therapy (30min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 30,
+    "priceCAD": 80,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 80,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Thaisa Sakima",
+      "Djuna Cunha"
+    ],
+    "description": "A therapeutic massage tailored to children and teens.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-12",
+    "name": "Pediatric Massage Therapy (45min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 45,
+    "priceCAD": 100,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 100,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Thaisa Sakima",
+      "Djuna Cunha"
+    ],
+    "description": "A therapeutic massage tailored to children and teens.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-13",
+    "name": "Pediatric Massage Therapy (60min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 60,
+    "priceCAD": 120,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 120,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Thaisa Sakima",
+      "Djuna Cunha"
+    ],
+    "description": "A therapeutic massage tailored to children and teens.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-14",
+    "name": "TMJ Massage Therapy - Initial (60min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 60,
+    "priceCAD": 140,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 140,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Yuki Hamada",
+      "Djuna Cunha"
+    ],
+    "description": "A focused massage of the jaw and neck muscles to relieve TMJ tension.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-15",
+    "name": "TMJ Massage Therapy - Follow-up (45min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 45,
+    "priceCAD": 120,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 120,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Yuki Hamada",
+      "Djuna Cunha"
+    ],
+    "description": "A focused massage of the jaw and neck muscles to relieve TMJ tension.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-16",
+    "name": "TMJ Massage Therapy - Follow-up (60min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 60,
+    "priceCAD": 140,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 140,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Yuki Hamada",
+      "Djuna Cunha"
+    ],
+    "description": "A focused massage of the jaw and neck muscles to relieve TMJ tension.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-17",
+    "name": "Indie Head Massage Therapy (30min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 30,
+    "priceCAD": 90,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 90,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace"
+    ],
+    "description": "A massage of the scalp, face, neck, shoulders, and upper back.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-18",
+    "name": "Indie Head Massage Therapy (45min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 45,
+    "priceCAD": 110,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 110,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace"
+    ],
+    "description": "A massage of the scalp, face, neck, shoulders, and upper back.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-19",
+    "name": "Indie Head Massage Therapy (60min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 60,
+    "priceCAD": 130,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 130,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace"
+    ],
+    "description": "A massage of the scalp, face, neck, shoulders, and upper back.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-20",
+    "name": "Initial Acupuncture Assessment & Treatment (75min)",
+    "category": "Acupuncture",
+    "durationMinutes": 75,
+    "priceCAD": 135,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 135,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Kiana Forder"
+    ],
+    "description": "A first visit that combines a health history review and tailored acupuncture treatment.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-21",
+    "name": "Acupuncture - Follow-up (45min)",
+    "category": "Acupuncture",
+    "durationMinutes": 45,
+    "priceCAD": 100,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 100,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Kiana Forder"
+    ],
+    "description": "A follow-up treatment that builds on the initial acupuncture care plan.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-22",
+    "name": "Acupuncture - Follow-up (60min)",
+    "category": "Acupuncture",
+    "durationMinutes": 60,
+    "priceCAD": 125,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 125,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Kiana Forder"
+    ],
+    "description": "A follow-up treatment that builds on the initial acupuncture care plan.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-23",
+    "name": "Acupuncture: Cranial & Facial - Initial (75min)",
+    "category": "Acupuncture",
+    "durationMinutes": 75,
+    "priceCAD": 150,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 150,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Kiana Forder"
+    ],
+    "description": "A first visit that combines a Traditional Chinese Medicine assessment with cranial & facial acupuncture.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-24",
+    "name": "Acupuncture: Cranial & Facial - Follow-up (60min)",
+    "category": "Acupuncture",
+    "durationMinutes": 60,
+    "priceCAD": 135,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 135,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Kiana Forder"
+    ],
+    "description": "A follow-up treatment that builds on the initial cranial & facial acupuncture plan.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-25",
+    "name": "Psychotherapy: Complimentary Fit Consultation (30min)",
+    "category": "Psychotherapy",
+    "durationMinutes": 30,
+    "priceCAD": 0,
+    "insuranceCovered": false,
+    "typicalInsuranceBillingCAD": 0,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Giovanna Faedo"
+    ],
+    "description": "A brief, complimentary in-person consultation to assess therapeutic fit.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-26",
+    "name": "Psychotherapy: Individual Session (50min)",
+    "category": "Psychotherapy",
+    "durationMinutes": 50,
+    "priceCAD": 150,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 150,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Giovanna Faedo"
+    ],
+    "description": "An in-person psychotherapy session for adults to support mental and emotional wellbeing.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-27",
+    "name": "MLD Massage Therapy - Body and Face (90min)",
+    "category": "Brazilian Lymphatic Drainage",
+    "durationMinutes": 90,
+    "priceCAD": 225,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 225,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Djuna Cunha"
+    ],
+    "description": "A 90-minute massage that combines full-body and facial manual lymphatic drainage.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-28",
+    "name": "Therapeutic Massage Therapy - Cupping (45min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 45,
+    "priceCAD": 120,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 120,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Djuna Cunha"
+    ],
+    "description": "A massage that combines hands-on techniques with therapeutic cupping.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-29",
+    "name": "Therapeutic Massage Therapy - Cupping (60min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 60,
+    "priceCAD": 140,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 140,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Djuna Cunha"
+    ],
+    "description": "A massage that combines hands-on techniques with therapeutic cupping.",
+    "status": "Active"
+  },
+  {
+    "id": "proc-30",
+    "name": "Therapeutic Massage Therapy - Cupping (75min)",
+    "category": "Registered Massage Therapy",
+    "durationMinutes": 75,
+    "priceCAD": 160,
+    "insuranceCovered": true,
+    "typicalInsuranceBillingCAD": 160,
+    "typicalCopayCAD": 0,
+    "assignedPractitioners": [
+      "Camila Dos Santos",
+      "Rachel Wallace",
+      "Yuki Hamada",
+      "Liz Cerato",
+      "Djuna Cunha"
+    ],
+    "description": "A massage that combines hands-on techniques with therapeutic cupping.",
     "status": "Active"
   }
 ];
@@ -1017,12 +1467,18 @@ function setupFrontDeskDashboard(ss) {
   sheet.getRange('E5:F10').setBorder(true, true, true, true, true, true, '#c7c2b4', SpreadsheetApp.BorderStyle.SOLID);
 
   // Current Appointment Form (Columns B & C)
+  const activeProceduresList = (INITIAL_PROCEDURES || []).filter(function(p) { return p.status !== 'Inactive'; });
+  const activePractitionersList = (INITIAL_PRACTITIONERS || []).filter(function(p) { return p.status === 'Active'; });
+  const defaultProcObj = activeProceduresList.filter(function(p) { return p.name === 'Therapeutic Massage Therapy (60min)'; })[0] || activeProceduresList[0];
+  const defaultServiceName = defaultProcObj ? defaultProcObj.name : 'Therapeutic Massage Therapy (60min)';
+  const defaultTherapistName = activePractitionersList.length > 0 ? activePractitionersList[0].name : 'Camila Dos Santos';
+
   const formLabels = [
     ['Appointment Date:', '=TODAY()', 'yyyy-mm-dd'],
-    ['Selected Service:', 'Brazilian Lymphatic Drainage (60 Min)', 'text'],
-    ['Practitioner / Therapist:', 'Camila Dos Santos, RMT', 'text'],
-    ['Total Service Price (CAD):', '=IF(ISBLANK(C7), 0, IFERROR(VLOOKUP(C7, \'Procedures & Treatments\'!B2:E200, 4, FALSE), 160))', '$#,##0.00'],
-    ['Direct Insurance Billed (CAD):', 120, '$#,##0.00'],
+    ['Selected Service:', defaultServiceName, 'text'],
+    ['Practitioner / Therapist:', defaultTherapistName, 'text'],
+    ['Total Service Price (CAD):', '=IF(ISBLANK(C7), 0, IFERROR(VLOOKUP(C7, \'Procedures & Treatments\'!B2:E200, 4, FALSE), 120))', '$#,##0.00'],
+    ['Direct Insurance Billed (CAD):', '=IF(ISBLANK(C7), 0, IFERROR(VLOOKUP(C7, \'Procedures & Treatments\'!B2:G200, 6, FALSE), 0))', '$#,##0.00'],
     ['Patient Copay (CAD):', '=MAX(0, C9-C10)', '$#,##0.00'],
     ['Referral Partner / Source:', 'No partner', 'text'],
     ['Appointment Status:', 'Completed', 'text'],
@@ -1047,34 +1503,23 @@ function setupFrontDeskDashboard(ss) {
     inputCell.setBackground('#ffffff');
   }
 
-  // Dropdown Validations
+  // Dropdown Validations (initial fallback; rebound live to Procedures & Practitioners tabs in refreshAllDropdownRules)
+  const initialServiceNames = activeProceduresList.length > 0
+    ? activeProceduresList.map(function(p) { return p.name; })
+    : ['Therapeutic Massage Therapy (60min)'];
   const serviceRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList([
-      'Brazilian Lymphatic Drainage (60 Min)',
-      'Brazilian Lymphatic Drainage (Extended - 90 Min)',
-      'Registered Massage Therapy (60 Min)',
-      'Registered Massage Therapy (90 Min)',
-      'Acupuncture & Traditional Chinese Medicine (60 Min)',
-      'Cosmetic Facial Acupuncture & Gua Sha (75 Min)',
-      'Psychotherapy & Somatic Mental Health (50 Min)',
-      'Nurse-Led Aesthetic Consultation & Neurotoxins (Botox / Dysport - 45 Min)',
-      'Advanced Dermal Filler & Skin Booster Therapy (60 Min)',
-      'Prenatal & Postnatal Specialized Massage (60 Min)'
-    ], true).build();
+    .requireValueInList(initialServiceNames, true)
+    .setAllowInvalid(true)
+    .build();
   sheet.getRange('C7').setDataValidation(serviceRule);
 
+  const initialTherapistNames = activePractitionersList.length > 0
+    ? activePractitionersList.map(function(p) { return p.name; })
+    : ['Camila Dos Santos'];
   const therapistRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList([
-      'Camila Dos Santos',
-      'Elizabeth Cerato Reveilleau',
-      'Yukiko Hamada',
-      'Rachel Wallace',
-      'Thaisa Sakima',
-      'Djuna Andrade Cunha',
-      'Kiana Forder',
-      'Giovanna Faedo',
-      'Elise K. Papa'
-    ], true).build();
+    .requireValueInList(initialTherapistNames, true)
+    .setAllowInvalid(true)
+    .build();
   sheet.getRange('C8').setDataValidation(therapistRule);
 
   const initialPartnerNames = INITIAL_PARTNERS.length > 0
@@ -1110,7 +1555,9 @@ function setupFrontDeskDashboard(ss) {
   sheet.getRange('B17').setValue('Insurance Provider:').setFontWeight('bold');
   sheet.getRange('C17').setValue('None / Self-Pay').setBackground('#ffffff');
   const insuranceRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['Direct Insurance Billing', 'Sun Life', 'Manulife', 'Canada Life', 'Green Shield Canada', 'Blue Cross', 'None / Self-Pay'], true).build();
+    .requireValueInList(['Direct Insurance Billing', 'Sun Life', 'Manulife', 'Canada Life', 'Green Shield Canada', 'Blue Cross', 'None / Self-Pay'], true)
+    .setAllowInvalid(true)
+    .build();
   sheet.getRange('C17').setDataValidation(insuranceRule);
 
   sheet.getRange('E17').setValue('Referral Code:').setFontWeight('bold');
@@ -1265,7 +1712,23 @@ function logVisitFromFrontDesk() {
     customersSheet.getRange(customerFoundRow, 14).setValue(0);             // Recency = 0 days
   }
 
-  // 3. Add appointment row to "Services & Bookings Log"
+  // 3. Look up exact Category & Duration from Procedures & Treatments tab
+  let serviceCategory = 'Registered Massage Therapy';
+  let serviceDuration = 60;
+  const procSheet = ss.getSheetByName('Procedures & Treatments') || ss.getSheetByName('Procedures');
+  if (procSheet) {
+    const procRows = procSheet.getDataRange().getValues();
+    const targetName = String(service || '').trim().toLowerCase();
+    for (let pr = 1; pr < procRows.length; pr++) {
+      if (procRows[pr][1] && String(procRows[pr][1]).trim().toLowerCase() === targetName) {
+        if (procRows[pr][2]) serviceCategory = String(procRows[pr][2]).trim();
+        if (procRows[pr][3]) serviceDuration = Number(procRows[pr][3]) || 60;
+        break;
+      }
+    }
+  }
+
+  // 4. Add appointment row to "Services & Bookings Log"
   const bookingCount = bookingsSheet.getLastRow();
   const bookingId = 'b-' + (100 + bookingCount);
 
@@ -1274,10 +1737,10 @@ function logVisitFromFrontDesk() {
     formattedDate,
     patientName,
     partnerSource,
-    service,
+    serviceCategory,
     service,
     therapist,
-    60,
+    serviceDuration,
     totalPrice,
     insuranceBilled,
     patientPaid,

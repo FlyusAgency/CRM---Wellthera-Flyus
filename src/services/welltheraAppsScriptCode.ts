@@ -57,8 +57,8 @@ export function generateWelltheraAppsScript(
   return `/**
  * =========================================================================
  * WELLTHERA INTEGRATED HEALTH — GOOGLE SHEETS SETUP & AUTOMATION
- * Version: 5.1 — FULL 3-REPORT CLINICSENSE RECONCILIATION (${customers.length.toLocaleString()} PATIENTS, ${bookings.length.toLocaleString()} APPOINTMENTS),
- * OKRS & QUARTERLY GOALS, PRACTITIONERS, PROCEDURES & FULL 2-WAY SYNC
+ * Version: 5.2 — FULL 3-REPORT CLINICSENSE RECONCILIATION (${customers.length.toLocaleString()} PATIENTS, ${bookings.length.toLocaleString()} APPOINTMENTS),
+ * VERIFIED TEAM (${practitioners.filter((p) => p.status === 'Active').length} ACTIVE PRACTITIONERS) & CLINICAL CATALOG (${procedures.filter((p) => p.status !== 'Inactive').length} PROCEDURES)
  *
  * Target Google Drive Folder:
  * ${DEFAULT_TARGET_DRIVE_FOLDER_URL}
@@ -80,8 +80,8 @@ export function generateWelltheraAppsScript(
  * - 📅 Services & Bookings Log (All ${bookings.length.toLocaleString()} Real Appointments with Direct Insurance & Out-of-Pocket Splits)
  * - 🤝 Partners & ROI (Referral Partners, Clinics, Gyms, and Commissions)
  * - 💰 CAC & Channel Costs (Acquisition Costs and Marketing Metrics)
- * - 👩‍⚕️ Practitioners & Team (Registered Massage Therapists, Acupuncturist, Psychotherapist, Nurse Injector)
- * - 📋 Procedures & Treatments (Clinical Catalog, Fees, Durations, and Billing Rates)
+ * - 👩‍⚕️ Practitioners & Team (${practitioners.filter((p) => p.status === 'Active').length} Active Practitioners: Registered Massage Therapists, Acupuncturist, Psychotherapist)
+ * - 📋 Procedures & Treatments (${procedures.filter((p) => p.status !== 'Inactive').length} Clinical Services, Fees, Durations, and Billing Rates)
  * - 🎯 OKRs & Quarterly Goals (Quarterly Revenue Goals, CAC Benchmarks, LTV:CAC Targets & Key Results)
  * - 📖 INSTRUCTIONS & STAFF GUIDE (Clinic Operating Manual & SOP)
  * =========================================================================
@@ -300,12 +300,18 @@ function setupFrontDeskDashboard(ss) {
   sheet.getRange('E5:F10').setBorder(true, true, true, true, true, true, '#c7c2b4', SpreadsheetApp.BorderStyle.SOLID);
 
   // Current Appointment Form (Columns B & C)
+  const activeProceduresList = (INITIAL_PROCEDURES || []).filter(function(p) { return p.status !== 'Inactive'; });
+  const activePractitionersList = (INITIAL_PRACTITIONERS || []).filter(function(p) { return p.status === 'Active'; });
+  const defaultProcObj = activeProceduresList.filter(function(p) { return p.name === 'Therapeutic Massage Therapy (60min)'; })[0] || activeProceduresList[0];
+  const defaultServiceName = defaultProcObj ? defaultProcObj.name : 'Therapeutic Massage Therapy (60min)';
+  const defaultTherapistName = activePractitionersList.length > 0 ? activePractitionersList[0].name : 'Camila Dos Santos';
+
   const formLabels = [
     ['Appointment Date:', '=TODAY()', 'yyyy-mm-dd'],
-    ['Selected Service:', 'Brazilian Lymphatic Drainage (60 Min)', 'text'],
-    ['Practitioner / Therapist:', 'Camila Dos Santos, RMT', 'text'],
-    ['Total Service Price (CAD):', '=IF(ISBLANK(C7), 0, IFERROR(VLOOKUP(C7, \\'Procedures & Treatments\\'!B2:E200, 4, FALSE), 160))', '$#,##0.00'],
-    ['Direct Insurance Billed (CAD):', 120, '$#,##0.00'],
+    ['Selected Service:', defaultServiceName, 'text'],
+    ['Practitioner / Therapist:', defaultTherapistName, 'text'],
+    ['Total Service Price (CAD):', '=IF(ISBLANK(C7), 0, IFERROR(VLOOKUP(C7, \\'Procedures & Treatments\\'!B2:E200, 4, FALSE), 120))', '$#,##0.00'],
+    ['Direct Insurance Billed (CAD):', '=IF(ISBLANK(C7), 0, IFERROR(VLOOKUP(C7, \\'Procedures & Treatments\\'!B2:G200, 6, FALSE), 0))', '$#,##0.00'],
     ['Patient Copay (CAD):', '=MAX(0, C9-C10)', '$#,##0.00'],
     ['Referral Partner / Source:', 'No partner', 'text'],
     ['Appointment Status:', 'Completed', 'text'],
@@ -330,34 +336,23 @@ function setupFrontDeskDashboard(ss) {
     inputCell.setBackground('#ffffff');
   }
 
-  // Dropdown Validations
+  // Dropdown Validations (initial fallback; rebound live to Procedures & Practitioners tabs in refreshAllDropdownRules)
+  const initialServiceNames = activeProceduresList.length > 0
+    ? activeProceduresList.map(function(p) { return p.name; })
+    : ['Therapeutic Massage Therapy (60min)'];
   const serviceRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList([
-      'Brazilian Lymphatic Drainage (60 Min)',
-      'Brazilian Lymphatic Drainage (Extended - 90 Min)',
-      'Registered Massage Therapy (60 Min)',
-      'Registered Massage Therapy (90 Min)',
-      'Acupuncture & Traditional Chinese Medicine (60 Min)',
-      'Cosmetic Facial Acupuncture & Gua Sha (75 Min)',
-      'Psychotherapy & Somatic Mental Health (50 Min)',
-      'Nurse-Led Aesthetic Consultation & Neurotoxins (Botox / Dysport - 45 Min)',
-      'Advanced Dermal Filler & Skin Booster Therapy (60 Min)',
-      'Prenatal & Postnatal Specialized Massage (60 Min)'
-    ], true).build();
+    .requireValueInList(initialServiceNames, true)
+    .setAllowInvalid(true)
+    .build();
   sheet.getRange('C7').setDataValidation(serviceRule);
 
+  const initialTherapistNames = activePractitionersList.length > 0
+    ? activePractitionersList.map(function(p) { return p.name; })
+    : ['Camila Dos Santos'];
   const therapistRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList([
-      'Camila Dos Santos',
-      'Elizabeth Cerato Reveilleau',
-      'Yukiko Hamada',
-      'Rachel Wallace',
-      'Thaisa Sakima',
-      'Djuna Andrade Cunha',
-      'Kiana Forder',
-      'Giovanna Faedo',
-      'Elise K. Papa'
-    ], true).build();
+    .requireValueInList(initialTherapistNames, true)
+    .setAllowInvalid(true)
+    .build();
   sheet.getRange('C8').setDataValidation(therapistRule);
 
   const initialPartnerNames = INITIAL_PARTNERS.length > 0
@@ -393,7 +388,9 @@ function setupFrontDeskDashboard(ss) {
   sheet.getRange('B17').setValue('Insurance Provider:').setFontWeight('bold');
   sheet.getRange('C17').setValue('None / Self-Pay').setBackground('#ffffff');
   const insuranceRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['Direct Insurance Billing', 'Sun Life', 'Manulife', 'Canada Life', 'Green Shield Canada', 'Blue Cross', 'None / Self-Pay'], true).build();
+    .requireValueInList(['Direct Insurance Billing', 'Sun Life', 'Manulife', 'Canada Life', 'Green Shield Canada', 'Blue Cross', 'None / Self-Pay'], true)
+    .setAllowInvalid(true)
+    .build();
   sheet.getRange('C17').setDataValidation(insuranceRule);
 
   sheet.getRange('E17').setValue('Referral Code:').setFontWeight('bold');
@@ -548,7 +545,23 @@ function logVisitFromFrontDesk() {
     customersSheet.getRange(customerFoundRow, 14).setValue(0);             // Recency = 0 days
   }
 
-  // 3. Add appointment row to "Services & Bookings Log"
+  // 3. Look up exact Category & Duration from Procedures & Treatments tab
+  let serviceCategory = 'Registered Massage Therapy';
+  let serviceDuration = 60;
+  const procSheet = ss.getSheetByName('Procedures & Treatments') || ss.getSheetByName('Procedures');
+  if (procSheet) {
+    const procRows = procSheet.getDataRange().getValues();
+    const targetName = String(service || '').trim().toLowerCase();
+    for (let pr = 1; pr < procRows.length; pr++) {
+      if (procRows[pr][1] && String(procRows[pr][1]).trim().toLowerCase() === targetName) {
+        if (procRows[pr][2]) serviceCategory = String(procRows[pr][2]).trim();
+        if (procRows[pr][3]) serviceDuration = Number(procRows[pr][3]) || 60;
+        break;
+      }
+    }
+  }
+
+  // 4. Add appointment row to "Services & Bookings Log"
   const bookingCount = bookingsSheet.getLastRow();
   const bookingId = 'b-' + (100 + bookingCount);
 
@@ -557,10 +570,10 @@ function logVisitFromFrontDesk() {
     formattedDate,
     patientName,
     partnerSource,
-    service,
+    serviceCategory,
     service,
     therapist,
-    60,
+    serviceDuration,
     totalPrice,
     insuranceBilled,
     patientPaid,

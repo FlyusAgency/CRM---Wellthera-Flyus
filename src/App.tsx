@@ -230,10 +230,10 @@ export default function App() {
 
   const [cacChannels, setCacChannels] = useState<CacChannelSpend[]>(initialCacChannels);
 
-  // Preserve Samuel's practitioners (wellthera_practitioners_v5 untouched)
+  // Samuel's verified active practitioners roster (v6 — synced from clinic catalog; customers/bookings/partners untouched)
   const [practitioners, setPractitioners] = useState<Practitioner[]>(() => {
     try {
-      const saved = localStorage.getItem('wellthera_practitioners_v5');
+      const saved = localStorage.getItem('wellthera_practitioners_v6');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -244,10 +244,10 @@ export default function App() {
     return initialPractitioners;
   });
 
-  // Preserve Samuel's services/procedures (wellthera_procedures_v5 untouched)
+  // Samuel's verified active procedures & fees catalog (v6 — 30 clinic services; customers/bookings/partners untouched)
   const [procedures, setProcedures] = useState<ClinicProcedure[]>(() => {
     try {
-      const saved = localStorage.getItem('wellthera_procedures_v5');
+      const saved = localStorage.getItem('wellthera_procedures_v6');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -258,7 +258,7 @@ export default function App() {
     return initialProcedures;
   });
 
-  // Persist datasets to LocalStorage (v10 reconciled customers & bookings; v5/v8 settings preserved)
+  // Persist datasets to LocalStorage (v10 reconciled customers & bookings; v6 practitioners/procedures; v5/v8 settings preserved)
   useEffect(() => {
     try {
       localStorage.setItem('wellthera_customers_v10', JSON.stringify(customers));
@@ -285,7 +285,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_practitioners_v5', JSON.stringify(practitioners));
+      localStorage.setItem('wellthera_practitioners_v6', JSON.stringify(practitioners));
     } catch (e) {
       console.warn('Failed to persist practitioners', e);
     }
@@ -293,7 +293,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('wellthera_procedures_v5', JSON.stringify(procedures));
+      localStorage.setItem('wellthera_procedures_v6', JSON.stringify(procedures));
     } catch (e) {
       console.warn('Failed to persist procedures', e);
     }

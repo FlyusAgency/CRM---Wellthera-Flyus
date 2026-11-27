@@ -2482,7 +2482,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                     type="tel"
                     value={newPractPhone}
                     onChange={(e) => setNewPractPhone(e.target.value)}
-                    placeholder="(705) 555-0199"
+                    placeholder="(705) 730-1000"
                     className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
                       isDarkMode
                         ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
@@ -3449,7 +3449,7 @@ export const GoogleSheetTrackerView: React.FC<GoogleSheetTrackerViewProps> = ({
                   type="text"
                   value={editProcPractitioners}
                   onChange={(e) => setEditProcPractitioners(e.target.value)}
-                  placeholder="e.g. Jane Doe, RMT, John Smith"
+                  placeholder="e.g. Camila Dos Santos, Rachel Wallace"
                   className={`w-full rounded-lg p-2 border focus:outline-none focus:ring-1 focus:ring-[#686e4a] ${
                     isDarkMode
                       ? 'bg-[#14160e] border-[#292e1e] text-[#f9f8f5]'
